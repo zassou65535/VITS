@@ -15,7 +15,7 @@ import torch.nn.functional as F
 #入力波形をperiod個に分割し、それぞれについて真贋を判定するDiscriminator
 class PeriodicDiscriminator(torch.nn.Module):
     def __init__(self, period):
-        super(DiscriminatorP, self).__init__()
+        super(PeriodicDiscriminator, self).__init__()
         self.period = period #入力波形を何分割するか
         self.kernel_size = 5
         self.stride = 3
