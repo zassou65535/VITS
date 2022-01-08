@@ -21,6 +21,8 @@ output_text_path = os.path.join(output_dir, "jvs_preprocessed.txt")
 output_wav_dir = os.path.join(output_dir, "jvs_wav_preprocessed")
 #音声ファイルを書き出す際のサンプリングレート
 output_wav_sampling_rate = 22050
+#前処理の対象とするwavファイルの最小の長さ　これより短いwavファイルはtxtファイルへの出力の対象としない
+min_wav_length = 22050*2
 
 #後述の処理により(wavファイルへのパス, 話者id, 発話内容)を保持するlist
 wavfilepath_speakerid_text = []
@@ -43,6 +45,9 @@ def preprocess_using_transcripts(speaker_id, speaker_id_on_jvs, filedir):
 				##########wavファイルに関する処理##########
 				##wavファイルをサンプリングレートoutput_wav_sampling_rate[Hz]に変換して保存する
 				loaded_wav_file, _ = librosa.core.load(load_wav_file_path, sr=output_wav_sampling_rate, mono=True)#wavファイルをサンプリングレートoutput_wav_sampling_rate[Hz]に変換して読み込み
+				if(loaded_wav_file.shape[0]<min_wav_length):#wavファイルが閾値よりも短いならば前処理の対象から除外
+					print(f"excluded from preprocessing:{wav_file_name} (len:{loaded_wav_file.shape[0]})")
+					continue
 				output_wav_path = os.path.join(output_wav_dir, speaker_id_on_jvs, wav_file_name)#出力する音声ファイルの出力パス
 				os.makedirs(os.path.join(output_wav_dir, speaker_id_on_jvs), exist_ok=True)#出力先ディレクトリがなければ作成
 				sf.write(output_wav_path, loaded_wav_file, samplerate=output_wav_sampling_rate, subtype="PCM_16")#16[bit]でwavファイルを保存
@@ -62,7 +67,7 @@ def preprocess_using_transcripts(speaker_id, speaker_id_on_jvs, filedir):
 				text_converted = ', ,'.join(text_converted)[:-1]
 				#文字列にpauが含まれている(解釈に失敗した記号)が含まれていれば処理を飛ばす　
 				if("pau" in text_converted):
-					print(text_converted)
+					print(f"\"pau\" is included:{text_converted}")
 					continue
 				#(wavファイルへのパス, 話者id, 発話内容)をlistへ追加
 				wavfilepath_speakerid_text.append((output_wav_path, speaker_id, text_converted))
