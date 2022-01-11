@@ -1,6 +1,6 @@
 #encoding:utf-8
 
-#JVSデータセットに対し、各音声ファイルに対しファイルパス、話者id、発話内容の3つを1行ずつにまとめ、1つのtxtファイルに出力するスクリプト
+#JVSデータセットに対し、各音声ファイルに対しファイルパス、話者id、発話内容の3つを1行ずつにまとめ、学習用と推論用の2種類のtxtファイルに出力するスクリプト
 #各話者についてnonpara30とparallel100内のwavファイルを対象とする
 #また、音声ファイルのサンプリングレートを22050Hzに変換する
 
@@ -10,13 +10,18 @@ import re
 import pyopenjtalk
 import librosa
 import soundfile as sf
+import random
 
 #JVSコーパスのデータセットへのパス
 jvs_dataset_path = "../../dataset_too_large/jvs_ver1/jvs_ver1"
 #txtファイル、サンプリングレート変換後のwavファイルの出力用ディレクトリ
 output_dir = "./dataset/jvs_preprocessed/"
-#出力するtxtファイルの名前
-output_text_path = os.path.join(output_dir, "jvs_preprocessed.txt")
+#出力するtxtファイル(学習用データセット用)の名前
+output_train_txtfile_path = os.path.join(output_dir, "jvs_preprocessed_for_train.txt")
+#出力するtxtファイル(推論用データセット用)の名前
+output_validation_txtfile_path = os.path.join(output_dir, "jvs_preprocessed_for_validation.txt")
+#推論用データとして用いる音声ファイルの数
+validation_file_number = 10
 #出力する音声ファイルの出力先ディレクトリ
 output_wav_dir = os.path.join(output_dir, "jvs_wav_preprocessed")
 #音声ファイルを書き出す際のサンプリングレート
@@ -24,8 +29,13 @@ output_wav_sampling_rate = 22050
 #前処理の対象とするwavファイルの最小の長さ　これより短いwavファイルはtxtファイルへの出力の対象としない
 min_wav_length = 22050*2
 
-#後述の処理により(wavファイルへのパス, 話者id, 発話内容)を保持するlist
+#後述の処理により(wavファイルへのパス, 話者id, 発話内容)を保持するlist　空のlistで初期化しておく
 wavfilepath_speakerid_text = []
+
+#乱数のシードを設定
+manualSeed = 999
+print("Random Seed: ", manualSeed)
+random.seed(manualSeed)
 
 #transcripts_utf8.txtを元にwavファイルへのパス, 話者, 発話内容の3つを関連づける関数
 def preprocess_using_transcripts(speaker_id, speaker_id_on_jvs, filedir):
@@ -59,12 +69,12 @@ def preprocess_using_transcripts(speaker_id, speaker_id_on_jvs, filedir):
 				text_converted = re.sub('・|・|「|」|』', '', text_converted)#発音とは無関係な記号を削除
 				text_converted = re.split('、|,|，|。|『', text_converted)#句読点、もしくは『で分割
 				#分割した各文字列について音素列への変換を実行
-				text_converted = ["" if(element=="") else pyopenjtalk.g2p(element) for element in text_converted]
+				text_converted = [pyopenjtalk.g2p(element) for element in text_converted if(not element=="")]
 				
 				#分割した各文字列についてスペースをカンマに変換
 				text_converted = [element.replace(" ",",") for element in text_converted]
 				#各発話(音素列)をスペース区切りで接合
-				text_converted = ', ,'.join(text_converted)[:-1]
+				text_converted = ', ,'.join(text_converted)
 				#文字列にpauが含まれている(解釈に失敗した記号)が含まれていれば処理を飛ばす　
 				if("pau" in text_converted):
 					print(f"\"pau\" is included:{text_converted}")
@@ -91,12 +101,29 @@ for speaker_id in range(0,100):
 	)
 	print(speaker_id_on_jvs, "preprocessed")
 
+#出力用ディレクトリがなければ作成
 os.makedirs(output_dir, exist_ok=True)
-#各音声ファイルに対しファイルパス、話者id、発話内容の3つを1行ずつにまとめたtxtファイルを出力
-with open(output_text_path, 'w') as f:
-	for (wavfilepath, speakerid, text) in wavfilepath_speakerid_text:
-		f.write(f"{wavfilepath}|{speakerid}|{text}\n")
 
-print(f"dataset_size : {len(wavfilepath_speakerid_text)}")
+####各音声ファイルに対しファイルパス、話者id、発話内容の3つを1行ずつにまとめたtxtファイルを出力####
+
+#list"wavfilepath_speakerid_text"のうち、どのindexのものをvalidation用データとするかをランダムに決める
+#1つづつindexを生成、すでに生成されたindexと被っていなければvalidation_file_indexに追加
+validation_file_index = []
+while(len(validation_file_index)<validation_file_number):
+	index = random.randrange(0, len(wavfilepath_speakerid_text))
+	if(not (index in validation_file_index)):
+		validation_file_index.append(index)
+
+#学習用、推論用データセットについてまとめたtxtファイルを出力
+with open(output_train_txtfile_path, 'w') as train_file:
+	with open(output_validation_txtfile_path, 'w') as validation_file:
+		for index, (wavfilepath, speakerid, text) in enumerate(wavfilepath_speakerid_text, 0):
+			if(index in validation_file_index):
+				validation_file.write(f"{wavfilepath}|{speakerid}|{text}\n")
+			else:
+				train_file.write(f"{wavfilepath}|{speakerid}|{text}\n")
+
+print(f"train dataset size : {len(wavfilepath_speakerid_text) - validation_file_number}")
+print(f"validation dataset size : {validation_file_number}")
 
 
