@@ -2,3 +2,6 @@ dataset/
 __pycache__/
 output/
 .DS_Store
+module/model_component/monotonic_align/core.c
+module/model_component/monotonic_align/build
+module/model_component/monotonic_align/monotonic_align

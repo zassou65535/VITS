@@ -22,8 +22,8 @@ import torch.nn.functional as F
 import torchaudio
 
 from module.dataset_util import *
-from module.vits_generator import *
-from module.vits_discriminator import *
+from module.vits_generator import VitsGenerator
+from module.vits_discriminator import VitsDiscriminator
 
 #乱数のシードを設定
 manualSeed = 999
