@@ -13,7 +13,7 @@ from torch.autograd import Function
 import torch.nn.functional as F
 
 #学習用モデルを構成するための各部品
-import .model_component.monotonic_align
+from .model_component import monotonic_align
 from .model_component.decoder import Decoder
 from .model_component.flow import Flow
 from .model_component.posterior_encoder import PosteriorEncoder
