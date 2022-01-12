@@ -22,13 +22,13 @@ class PeriodicDiscriminator(torch.nn.Module):
         self.padding = 2
 
         self.conv2ds = nn.ModuleList([
-            torch.nn.utils.weight_norm(Conv2d(1, 32, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
-            torch.nn.utils.weight_norm(Conv2d(32, 128, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
-            torch.nn.utils.weight_norm(Conv2d(128, 512, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
-            torch.nn.utils.weight_norm(Conv2d(512, 1024, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
-            torch.nn.utils.weight_norm(Conv2d(1024, 1024, (self.kernel_size, 1), 1, padding=self.padding)),
+            torch.nn.utils.weight_norm(nn.Conv2d(1, 32, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
+            torch.nn.utils.weight_norm(nn.Conv2d(32, 128, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
+            torch.nn.utils.weight_norm(nn.Conv2d(128, 512, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
+            torch.nn.utils.weight_norm(nn.Conv2d(512, 1024, (self.kernel_size, 1), (self.stride, 1), padding=(self.padding, 0))),
+            torch.nn.utils.weight_norm(nn.Conv2d(1024, 1024, (self.kernel_size, 1), 1, padding=self.padding)),
         ])
-        self.conv2d_post = torch.nn.utils.weight_norm(Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
+        self.conv2d_post = torch.nn.utils.weight_norm(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
 
     def forward(self, x):
         #feature matching loss(GANの学習安定化用)を取るため各特徴量を保持する
@@ -58,14 +58,14 @@ class Discriminator(torch.nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
         self.conv1ds = nn.ModuleList([
-            torch.nn.utils.weight_norm(Conv1d(1, 16, 15, 1, padding=7)),
-            torch.nn.utils.weight_norm(Conv1d(16, 64, 41, 4, groups=4, padding=20)),
-            torch.nn.utils.weight_norm(Conv1d(64, 256, 41, 4, groups=16, padding=20)),
-            torch.nn.utils.weight_norm(Conv1d(256, 1024, 41, 4, groups=64, padding=20)),
-            torch.nn.utils.weight_norm(Conv1d(1024, 1024, 41, 4, groups=256, padding=20)),
-            torch.nn.utils.weight_norm(Conv1d(1024, 1024, 5, 1, padding=2)),
+            torch.nn.utils.weight_norm(nn.Conv1d(1, 16, 15, 1, padding=7)),
+            torch.nn.utils.weight_norm(nn.Conv1d(16, 64, 41, 4, groups=4, padding=20)),
+            torch.nn.utils.weight_norm(nn.Conv1d(64, 256, 41, 4, groups=16, padding=20)),
+            torch.nn.utils.weight_norm(nn.Conv1d(256, 1024, 41, 4, groups=64, padding=20)),
+            torch.nn.utils.weight_norm(nn.Conv1d(1024, 1024, 41, 4, groups=256, padding=20)),
+            torch.nn.utils.weight_norm(nn.Conv1d(1024, 1024, 5, 1, padding=2)),
         ])
-        self.conv1d_post = torch.nn.utils.weight_norm(Conv1d(1024, 1, 3, 1, padding=1))
+        self.conv1d_post = torch.nn.utils.weight_norm(nn.Conv1d(1024, 1, 3, 1, padding=1))
 
     def forward(self, x):
         #feature matching loss(GANの学習安定化用)を取るため各特徴量を保持する
@@ -84,7 +84,7 @@ class Discriminator(torch.nn.Module):
 
 class VitsDiscriminator(torch.nn.Module):
     def __init__(self):
-        super(MultiPeriodDiscriminator, self).__init__()
+        super(VitsDiscriminator, self).__init__()
         self.discriminators = nn.ModuleList([
             Discriminator(),#DiscriminatorSは通常のdiscriminator
             PeriodicDiscriminator(period=2),#PeriodicDiscriminatorは波形をperiod個のchunkに分け、それぞれについて真贋判定を行う

@@ -2,6 +2,7 @@
 
 import random
 import numpy as np
+import math
 
 import torch
 import torch.nn as nn
@@ -20,9 +21,49 @@ from .model_component.posterior_encoder import PosteriorEncoder
 from .model_component.stochastic_duration_predictor import StochasticDurationPredictor
 from .model_component.text_encoder import TextEncoder
 
+def slice_segments(x, ids_str, segment_size=4):
+    ret = torch.zeros_like(x[:, :, :segment_size])
+    for i in range(x.size(0)):
+        idx_str = ids_str[i]
+        idx_end = idx_str + segment_size
+        ret[i] = x[i, :, idx_str:idx_end]
+    return ret
+
+def rand_slice_segments(x, x_lengths=None, segment_size=4):
+    b, d, t = x.size()
+    if x_lengths is None:
+        x_lengths = t
+    ids_str_max = x_lengths - segment_size + 1
+    ids_str = (torch.rand([b]).to(device=x.device) * ids_str_max).to(dtype=torch.long)
+    ret = slice_segments(x, ids_str, segment_size)
+    return ret, ids_str
+
+def sequence_mask(length, max_length=None):
+    if max_length is None:
+        max_length = length.max()
+    x = torch.arange(max_length, dtype=length.dtype, device=length.device)
+    return x.unsqueeze(0) < length.unsqueeze(1)
+
+def generate_path(duration, mask):
+    """
+    duration: [b, 1, t_x]
+    mask: [b, 1, t_y, t_x]
+    """
+    device = duration.device
+    
+    b, _, t_y, t_x = mask.shape
+    cum_duration = torch.cumsum(duration, -1)
+    
+    cum_duration_flat = cum_duration.view(b * t_x)
+    path = sequence_mask(cum_duration_flat, t_y).to(mask.dtype)
+    path = path.view(b, t_x, t_y)
+    path = path - F.pad(path, convert_pad_shape([[0, 0], [1, 0], [0, 0]]))[:, :-1]
+    path = path.unsqueeze(1).transpose(2,3) * mask
+    return path
+
 #モデルの学習を行うためのクラス
 class VitsGenerator(nn.Module):
-  def __init__(self, n_vocab):
+  def __init__(self, n_vocab, n_speakers):
     super().__init__()
     self.n_vocab = n_vocab
     self.spec_channels = 513
@@ -40,22 +81,15 @@ class VitsGenerator(nn.Module):
     self.upsample_initial_channel = 512
     self.upsample_kernel_sizes = [16,16,4,4]
     self.segment_size = 32
-    self.n_speakers = 109
+    self.n_speakers = n_speakers
     self.gin_channels = 256
 
-    self.text_encoder = TextEncoder(n_vocab,
-        inter_channels,
-        hidden_channels,
-        filter_channels,
-        n_heads,
-        n_layers,
-        kernel_size,
-        p_dropout)
-    self.decoder = Decoder(inter_channels, resblock, resblock_kernel_sizes, resblock_dilation_sizes, upsample_rates, upsample_initial_channel, upsample_kernel_sizes, gin_channels=gin_channels)
-    self.posterior_encoder = PosteriorEncoder(spec_channels, inter_channels, hidden_channels, 5, 1, 16, gin_channels=gin_channels)
-    self.flow = Flow(inter_channels, hidden_channels, 5, 1, 4, gin_channels=gin_channels)
-    self.stochastic_duration_predictor = StochasticDurationPredictor(hidden_channels, 192, 3, 0.5, 4, gin_channels=gin_channels)
-    self.speaker_embedding = nn.Embedding(n_speakers, gin_channels)#話者埋め込み用ネットワーク
+    self.text_encoder = TextEncoder(self.n_vocab)
+    self.decoder = Decoder(gin_channels=self.gin_channels)
+    self.posterior_encoder = PosteriorEncoder(gin_channels=self.gin_channels)
+    self.flow = Flow(self.inter_channels, self.hidden_channels, 5, 1, 4, gin_channels=self.gin_channels)
+    self.stochastic_duration_predictor = StochasticDurationPredictor(self.hidden_channels, 192, 3, 0.5, 4, gin_channels=self.gin_channels)
+    self.speaker_embedding = nn.Embedding(self.n_speakers, self.gin_channels)#話者埋め込み用ネットワーク
 
   def forward(self, x, x_lengths, y, y_lengths, speaker_id):
     #x.size() : torch.Size([64, 145(example)])
@@ -120,10 +154,10 @@ class VitsGenerator(nn.Module):
     #z.size() : torch.Size([64, 192, 400])
     #y_lengths.size() : torch.Size([64])
     #self.segment_size = 32
-    z_slice, ids_slice = commons.rand_slice_segments(z, y_lengths, self.segment_size)
+    z_slice, ids_slice = rand_slice_segments(z, y_lengths, self.segment_size)
 
     #z_slice.size() : torch.Size([64, 192, 32])
-    o = self.decoder(z_slice, g=g)
+    o = self.decoder(z_slice, embedded_speaker_id=g)
     #o.size() : torch.Size([64, 1, 8192])
 
     return o, l_length, attn, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
@@ -137,9 +171,9 @@ class VitsGenerator(nn.Module):
     w = torch.exp(logw) * x_mask * length_scale
     w_ceil = torch.ceil(w)
     y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
-    y_mask = torch.unsqueeze(commons.sequence_mask(y_lengths, None), 1).to(x_mask.dtype)
+    y_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).to(x_mask.dtype)
     attn_mask = torch.unsqueeze(x_mask, 2) * torch.unsqueeze(y_mask, -1)
-    attn = commons.generate_path(w_ceil, attn_mask)
+    attn = generate_path(w_ceil, attn_mask)
 
     m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']
     logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2) # [b, t', t], [b, t, d] -> [b, d, t']

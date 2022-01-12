@@ -33,7 +33,7 @@ torch.manual_seed(manualSeed)
 
 #前処理用スクリプトによって出力された、データセットに関するtxtファイルへのパス
 train_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_train.txt"#学習用
-validation_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_validation.txt"#推論用
+validation_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_validation.txt"#推論用
 #結果を出力するためのディレクトリ
 output_dir = "./output/vits/train/"
 #使用するデバイス
@@ -82,7 +82,7 @@ validation_loader = torch.utils.data.DataLoader(
 								validation_dataset, 
 								batch_size=1,
 								collate_fn=collate_fn, 
-								num_workers=os.cpu_count(),
+								num_workers=0,
 								shuffle=False, 
 								pin_memory=True,
 								#num_workerごとにシードを設定　これがないと各num_workerにおいて乱数が似たような値を返してしまう
@@ -91,7 +91,7 @@ validation_loader = torch.utils.data.DataLoader(
 print("validation dataset size: {}".format(len(validation_dataset)))
 
 #Generatorのインスタンスを生成
-netG = VitsGenerator(n_vocab=len(phoneme_list))
+netG = VitsGenerator(n_vocab=len(phoneme_list), n_speakers=100)
 #ネットワークをデバイスに移動
 netG = netG.to(device)
 
@@ -120,187 +120,269 @@ print("Start Training")
 #学習開始時刻を保存
 t_epoch_start = time.time()
 
-# #エポックごとのループ　itertools.count()でカウンターを伴う無限ループを実装可能
-# for epoch in itertools.count():
-# 	#ネットワークを学習モードにする
-# 	netG_A2B.train(), netG_B2A.train()
-# 	netD_A.train(), netD_B.train()
-# 	#データセットA, Bからbatch_size枚ずつ取り出し学習
-# 	for (real_A, real_B) in zip(dataloader_A, dataloader_B):
-# 		#real_A.size() : torch.Size([batch_size, 128, 160])
-# 		#real_B.size() : torch.Size([batch_size, 128, 160])
-# 		#deviceに転送
-# 		real_A = real_A.to(device)
-# 		real_B = real_B.to(device)
+#エポックごとのループ　itertools.count()でカウンターを伴う無限ループを実装可能
+for epoch in itertools.count():
+	#ネットワークを学習モードにする
+	netG.train()
+	netD.train()
+	#データセットA, Bからbatch_size枚ずつ取り出し学習
+	for data in train_loader:
+		#deviceに転送
+		wav_padded, wav_length = data[0].to(device), data[1].to(device)
+		spec_padded, spec_length = data[2].to(device), data[3].to(device)
+		speaker_id = data[4].to(device)
+		text_padded, text_length = data[5].to(device), data[6].to(device)
+		#wav_padded.size(), wav_length.size() : torch.Size([batch_size, 音声のサンプル数]) torch.Size([batch_size])
+		#spec_padded.size(), spec_length.size() : torch.Size([batch_size, 513(周波数領域), STFT後のサンプル数]) torch.Size([batch_size])
+		#speaker_id.size() : torch.Size([batch_size])
+		#text_padded.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
 
-# 		#-------------------------
-#  		#Generatorの学習
-# 		#-------------------------
-# 		#Generator adversarial losses: hinge loss (from Scyclone paper eq.1)
-# 		fake_B = netG_A2B(real_A)
-# 		#fake_Bの中央128フレームを切り取ったものをDiscriminatorへの入力とする
-# 		pred_fake_B = netD_B(torch.narrow(fake_B, dim=2, start=16, length=128))
-# 		loss_adv_G_A2B = torch.mean(F.relu(-1.0 * pred_fake_B))
-# 		fake_A = netG_B2A(real_B)
-# 		pred_fake_A = netD_A(torch.narrow(fake_A, dim=2, start=16, length=128))
-# 		loss_adv_G_B2A = torch.mean(F.relu(-1.0 * pred_fake_A))
+		###Generatorによる生成###
+		wav_predicted, wav_length_predicted, attn, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_padded, spec_length, speaker_id)
+		#y_hat : torch.Size([64, 1, 8192])　生成された波形
+		#l_length : torch.Size([64])
+		#attn : torch.Size([64, 1, 400, 181])
+		#ids_slice : torch.Size([64])
+		#x_mask : torch.Size([64, 1, 181])
+		#z_mask : torch.Size([64, 1, 400])
 
-# 		#cycle consistency losses: L1 loss (from Scyclone paper eq.1)
-# 		cycled_A = netG_B2A(fake_B)
-# 		loss_cycle_ABA = F.l1_loss(cycled_A, real_A)
-# 		cycled_B = netG_A2B(fake_A)
-# 		loss_cycle_BAB = F.l1_loss(cycled_B, real_B)
+		#z : torch.Size([64, 192, 400])
+		#z_p : torch.Size([64, 192, 400])
+		#m_p : torch.Size([64, 192, 400])
+		#logs_p : torch.Size([64, 192, 400])
+		#m_q : torch.Size([64, 192, 400])
+		#logs_q : torch.Size([64, 192, 400])
 
-# 		#identity mapping losses: L1 loss (from Scyclone paper eq.1)
-# 		same_B = netG_A2B(real_B)
-# 		loss_identity_B = F.l1_loss(same_B, real_B)
-# 		same_A = netG_B2A(real_A)
-# 		loss_identity_A = F.l1_loss(same_A, real_A)
+		#データセット中のスペクトログラムからメルスペクトログラムを計算
+		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=1024, f_min=0, f_max=22050//2, n_mels=80, sample_rate=22050)
+		mel_spec = torch.matmul(spec.transpose(-1, -2), fbanks).transpose(-1, -2)
+		print(mel_spec.size())
 
-# 		#Total loss
-# 		loss_G = (
-# 			loss_adv_G_A2B
-# 			+ loss_adv_G_B2A
-# 			+ loss_cycle_ABA * weight_cycle_loss
-# 			+ loss_cycle_BAB * weight_cycle_loss
-# 			+ loss_identity_A * weight_identity_loss
-# 			+ loss_identity_B * weight_identity_loss
-# 		)
-# 		#溜まった勾配をリセット
-# 		optimizerG.zero_grad()
-# 		#傾きを計算
-# 		loss_G.backward()
-# 		#gradient explosionを避けるため勾配を制限
-# 		nn.utils.clip_grad_norm_(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()), max_norm=1.0, norm_type=2.0)
-# 		#Generatorのパラメーターを更新
-# 		optimizerG.step()
+	# 	mel_spec = spec_to_mel_torch(
+	# 		spec, 
+	# 		hps.data.filter_length, 
+	# 		hps.data.n_mel_channels, 
+	# 		hps.data.sampling_rate,
+	# 		hps.data.mel_fmin, 
+	# 		hps.data.mel_fmax)
+	# 	y_mel = commons.slice_segments(mel, ids_slice, hps.train.segment_size // hps.data.hop_length)
+	# 	y_hat_mel = mel_spectrogram_torch(
+	# 		y_hat.squeeze(1), 
+	# 		hps.data.filter_length, 
+	# 		hps.data.n_mel_channels, 
+	# 		hps.data.sampling_rate, 
+	# 		hps.data.hop_length, 
+	# 		hps.data.win_length, 
+	# 		hps.data.mel_fmin, 
+	# 		hps.data.mel_fmax
+	# 	)
+		
+	# 	#y : torch.Size([64, 1, 102577(example)])
+	# 	#ids_slice : torch.Size([64])
+	# 	#hps.data.hop_length : 256
+	# 	#hps.train.segment_size : 8192
+	# 	y = commons.slice_segments(y, ids_slice * hps.data.hop_length, hps.train.segment_size) # slice 
 
-# 		#stdoutへの出力用
-# 		log_G = {
-# 			"Loss/G_total": loss_G,
-# 			"Loss/Adv/G_B2A": loss_adv_G_B2A,
-# 			"Loss/Adv/G_A2B": loss_adv_G_A2B,
-# 			"Loss/Cyc/A2B2A": loss_cycle_ABA * weight_cycle_loss,
-# 			"Loss/Cyc/B2A2B": loss_cycle_BAB * weight_cycle_loss,
-# 			"Loss/Id/A2A": loss_identity_A * weight_identity_loss,
-# 			"Loss/Id/B2B": loss_identity_B * weight_identity_loss,
-# 		}
-# 		#グラフへの出力用
-# 		adversarial_losses_netG_A2B.append(loss_adv_G_A2B.item())
-# 		adversarial_losses_netG_B2A.append(loss_adv_G_B2A.item())
+	# 	# Discriminatorの学習
+	# 	# y.size() : torch.Size([64, 1, 8192])　本物波形
+	# 	# y_hat.size() : torch.Size([64, 1, 8192])　生成された波形
+	# 	#Dへの入力は音声波形
+	# 	y_d_hat_r, y_d_hat_g, _, _ = net_d(y, y_hat.detach())
+	# 	with autocast(enabled=False):
+	# 		loss_disc, losses_disc_r, losses_disc_g = discriminator_loss(y_d_hat_r, y_d_hat_g)
+	# 		loss_disc_all = loss_disc
+	# 	optim_d.zero_grad()
+	# 	scaler.scale(loss_disc_all).backward()
+	# 	scaler.unscale_(optim_d)
+	# 	grad_norm_d = commons.clip_grad_value_(net_d.parameters(), None)
+	# 	scaler.step(optim_d)
 
-# 		#-------------------------
-#  		#discriminatorの学習
-# 		#-------------------------
-# 		#Adversarial loss: hinge loss (from Scyclone paper eq.1)
-# 		#netD_Aの学習
-# 		##本物音声によるLoss
-# 		#スペクトログラムの中央128フレームを切り取ったものをDiscriminatorへの入力とする
-# 		pred_A_real = netD_A(torch.narrow(real_A, dim=2, start=16, length=128))
-# 		loss_D_A_real = torch.mean(F.relu(0.5 - pred_A_real))
-# 		##偽物音声によるLoss
-# 		with torch.no_grad():
-# 			fake_A = netG_B2A(real_B)
-# 		pred_A_fake = netD_A(torch.narrow(fake_A, dim=2, start=16, length=128))
-# 		loss_D_A_fake = torch.mean(F.relu(0.5 + pred_A_fake))
-# 		##netD_A total loss
-# 		loss_D_A = loss_D_A_real + loss_D_A_fake
+	# 	with autocast(enabled=hps.train.fp16_run):
+	# 	# Generatorの学習
+	# 	y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(y, y_hat)
+	# 	with autocast(enabled=False):
+	# 		loss_dur = torch.sum(l_length.float())#duration loss
+	# 		loss_mel = F.l1_loss(y_mel, y_hat_mel) * hps.train.c_mel#reconstruction loss
+	# 		loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl#KL divergence
 
-# 		#netD_Bの学習
-# 		##本物音声によるLoss
-# 		pred_B_real = netD_B(torch.narrow(real_B, dim=2, start=16, length=128))
-# 		loss_D_B_real = torch.mean(F.relu(0.5 - pred_B_real))
-# 		##偽物音声によるLoss
-# 		with torch.no_grad():
-# 			fake_B = netG_A2B(real_A)
-# 		pred_B_fake = netD_B(torch.narrow(fake_B, dim=2, start=16, length=128))
-# 		loss_D_B_fake = torch.mean(F.relu(0.5 + pred_B_fake))
-# 		##netD_B total loss
-# 		loss_D_B = loss_D_B_real + loss_D_B_fake
+	# 		loss_fm = feature_loss(fmap_r, fmap_g)#feature matching loss(GANの中間層の出力分布の統計量を，realとfakeの場合それぞれにおいて互いの分布間で近づける)
+	# 		loss_gen, losses_gen = generator_loss(y_d_hat_g)#adversarial loss(GANによるloss)
+	# 		loss_gen_all = loss_gen + loss_fm + loss_mel + loss_dur + loss_kl
+	# 	optim_g.zero_grad()
+	# 	scaler.scale(loss_gen_all).backward()
+	# 	scaler.unscale_(optim_g)
+	# 	grad_norm_g = commons.clip_grad_value_(net_g.parameters(), None)
+	# 	scaler.step(optim_g)
+	# 	scaler.update()
 
-# 		#Total
-# 		loss_D = loss_D_A + loss_D_B
+	# 	#-------------------------
+ 	# 	#Generatorの学習
+	# 	#-------------------------
+	# 	#Generator adversarial losses: hinge loss (from Scyclone paper eq.1)
+	# 	fake_B = netG_A2B(real_A)
+	# 	#fake_Bの中央128フレームを切り取ったものをDiscriminatorへの入力とする
+	# 	pred_fake_B = netD_B(torch.narrow(fake_B, dim=2, start=16, length=128))
+	# 	loss_adv_G_A2B = torch.mean(F.relu(-1.0 * pred_fake_B))
+	# 	fake_A = netG_B2A(real_B)
+	# 	pred_fake_A = netD_A(torch.narrow(fake_A, dim=2, start=16, length=128))
+	# 	loss_adv_G_B2A = torch.mean(F.relu(-1.0 * pred_fake_A))
 
-# 		#溜まった勾配をリセット
-# 		optimizerD.zero_grad()
-# 		#傾きを計算
-# 		loss_D.backward()
-# 		#gradient explosionを避けるため勾配を制限
-# 		nn.utils.clip_grad_norm_(itertools.chain(netD_A.parameters(), netD_B.parameters()), max_norm=1.0, norm_type=2.0)
-# 		#Generatorのパラメーターを更新
-# 		optimizerD.step()
+	# 	#cycle consistency losses: L1 loss (from Scyclone paper eq.1)
+	# 	cycled_A = netG_B2A(fake_B)
+	# 	loss_cycle_ABA = F.l1_loss(cycled_A, real_A)
+	# 	cycled_B = netG_A2B(fake_A)
+	# 	loss_cycle_BAB = F.l1_loss(cycled_B, real_B)
 
-# 		#stdoutへの出力用
-# 		log_D = {
-# 			"Loss/D_total": loss_D,
-# 			"Loss/D_A": loss_D_A,
-# 			"Loss/D_B": loss_D_B,
-# 		}
-# 		#グラフへの出力用
-# 		adversarial_losses_netD_A.append(loss_D_A.item())
-# 		adversarial_losses_netD_B.append(loss_D_B.item())
+	# 	#identity mapping losses: L1 loss (from Scyclone paper eq.1)
+	# 	same_B = netG_A2B(real_B)
+	# 	loss_identity_B = F.l1_loss(same_B, real_B)
+	# 	same_A = netG_B2A(real_A)
+	# 	loss_identity_A = F.l1_loss(same_A, real_A)
 
-# 		#学習状況をstdoutに出力
-# 		if now_iteration % 10 == 0:
-# 			print(f"[{now_iteration}/{total_iterations}]", end="")
-# 			for key, value in log_G.items():
-# 				print(f" {key}:{value:.5f}", end="")
-# 			for key, value in log_D.items():
-# 				print(f" {key}:{value:.5f}", end="")
-# 			print("")
+	# 	#Total loss
+	# 	loss_G = (
+	# 		loss_adv_G_A2B
+	# 		+ loss_adv_G_B2A
+	# 		+ loss_cycle_ABA * weight_cycle_loss
+	# 		+ loss_cycle_BAB * weight_cycle_loss
+	# 		+ loss_identity_A * weight_identity_loss
+	# 		+ loss_identity_B * weight_identity_loss
+	# 	)
+	# 	#溜まった勾配をリセット
+	# 	optimizerG.zero_grad()
+	# 	#傾きを計算
+	# 	loss_G.backward()
+	# 	#gradient explosionを避けるため勾配を制限
+	# 	nn.utils.clip_grad_norm_(itertools.chain(netG_A2B.parameters(), netG_B2A.parameters()), max_norm=1.0, norm_type=2.0)
+	# 	#Generatorのパラメーターを更新
+	# 	optimizerG.step()
 
-# 		#学習状況をファイルに出力
-# 		if((now_iteration%output_iter==0) or (now_iteration+1>=total_iterations)):
-# 			out_dir = os.path.join(output_dir, f"iteration{now_iteration}")
-# 			#出力用ディレクトリがなければ作る
-# 			os.makedirs(out_dir, exist_ok=True)
+	# 	#stdoutへの出力用
+	# 	log_G = {
+	# 		"Loss/G_total": loss_G,
+	# 		"Loss/Adv/G_B2A": loss_adv_G_B2A,
+	# 		"Loss/Adv/G_A2B": loss_adv_G_A2B,
+	# 		"Loss/Cyc/A2B2A": loss_cycle_ABA * weight_cycle_loss,
+	# 		"Loss/Cyc/B2A2B": loss_cycle_BAB * weight_cycle_loss,
+	# 		"Loss/Id/A2A": loss_identity_A * weight_identity_loss,
+	# 		"Loss/Id/B2B": loss_identity_B * weight_identity_loss,
+	# 	}
+	# 	#グラフへの出力用
+	# 	adversarial_losses_netG_A2B.append(loss_adv_G_A2B.item())
+	# 	adversarial_losses_netG_B2A.append(loss_adv_G_B2A.item())
 
-# 			#ここまでの学習にかかった時間を出力
-# 			t_epoch_finish = time.time()
-# 			total_time = t_epoch_finish - t_epoch_start
-# 			with open(os.path.join(out_dir,"time.txt"), mode='w') as f:
-# 				f.write("total_time: {:.4f} sec.\n".format(total_time))
+	# 	#-------------------------
+ 	# 	#discriminatorの学習
+	# 	#-------------------------
+	# 	#Adversarial loss: hinge loss (from Scyclone paper eq.1)
+	# 	#netD_Aの学習
+	# 	##本物音声によるLoss
+	# 	#スペクトログラムの中央128フレームを切り取ったものをDiscriminatorへの入力とする
+	# 	pred_A_real = netD_A(torch.narrow(real_A, dim=2, start=16, length=128))
+	# 	loss_D_A_real = torch.mean(F.relu(0.5 - pred_A_real))
+	# 	##偽物音声によるLoss
+	# 	with torch.no_grad():
+	# 		fake_A = netG_B2A(real_B)
+	# 	pred_A_fake = netD_A(torch.narrow(fake_A, dim=2, start=16, length=128))
+	# 	loss_D_A_fake = torch.mean(F.relu(0.5 + pred_A_fake))
+	# 	##netD_A total loss
+	# 	loss_D_A = loss_D_A_real + loss_D_A_fake
 
-# 			#学習済みモデル（CPU向け）を出力
-# 			netG_A2B.eval()
-# 			torch.save(netG_A2B.to('cpu').state_dict(), os.path.join(out_dir, "generator_A2B_trained_model_cpu.pth"))
-# 			netG_A2B.to(device)
-# 			netG_A2B.train()
+	# 	#netD_Bの学習
+	# 	##本物音声によるLoss
+	# 	pred_B_real = netD_B(torch.narrow(real_B, dim=2, start=16, length=128))
+	# 	loss_D_B_real = torch.mean(F.relu(0.5 - pred_B_real))
+	# 	##偽物音声によるLoss
+	# 	with torch.no_grad():
+	# 		fake_B = netG_A2B(real_A)
+	# 	pred_B_fake = netD_B(torch.narrow(fake_B, dim=2, start=16, length=128))
+	# 	loss_D_B_fake = torch.mean(F.relu(0.5 + pred_B_fake))
+	# 	##netD_B total loss
+	# 	loss_D_B = loss_D_B_real + loss_D_B_fake
 
-# 			netG_B2A.eval()
-# 			torch.save(netG_B2A.to('cpu').state_dict(), os.path.join(out_dir, "generator_B2A_trained_model_cpu.pth"))
-# 			netG_B2A.to(device)
-# 			netG_B2A.train()
+	# 	#Total
+	# 	loss_D = loss_D_A + loss_D_B
 
-# 			#lossのグラフを出力
-# 			plt.clf()
-# 			plt.figure(figsize=(10, 5))
-# 			plt.title("Generator_A2B and Discriminator_B Adversarial Loss During Training")
-# 			plt.plot(adversarial_losses_netG_A2B, label="netG_A2B")
-# 			plt.plot(adversarial_losses_netD_B, label="netD_B")
-# 			plt.xlabel("iterations")
-# 			plt.ylabel("Loss")
-# 			plt.legend()
-# 			plt.grid()
-# 			plt.savefig(os.path.join(out_dir, "loss_netG_A2B_netD_B.png"))
-# 			plt.close()
+	# 	#溜まった勾配をリセット
+	# 	optimizerD.zero_grad()
+	# 	#傾きを計算
+	# 	loss_D.backward()
+	# 	#gradient explosionを避けるため勾配を制限
+	# 	nn.utils.clip_grad_norm_(itertools.chain(netD_A.parameters(), netD_B.parameters()), max_norm=1.0, norm_type=2.0)
+	# 	#Generatorのパラメーターを更新
+	# 	optimizerD.step()
 
-# 			plt.clf()
-# 			plt.figure(figsize=(10, 5))
-# 			plt.title("Generator_B2A and Discriminator_A Adversarial Loss During Training")
-# 			plt.plot(adversarial_losses_netG_B2A, label="netG_B2A")
-# 			plt.plot(adversarial_losses_netD_A, label="netD_A")
-# 			plt.xlabel("iterations")
-# 			plt.ylabel("Loss")
-# 			plt.legend()
-# 			plt.grid()
-# 			plt.savefig(os.path.join(out_dir, "loss_netG_B2A_netD_A.png"))
-# 			plt.close()
+	# 	#stdoutへの出力用
+	# 	log_D = {
+	# 		"Loss/D_total": loss_D,
+	# 		"Loss/D_A": loss_D_A,
+	# 		"Loss/D_B": loss_D_B,
+	# 	}
+	# 	#グラフへの出力用
+	# 	adversarial_losses_netD_A.append(loss_D_A.item())
+	# 	adversarial_losses_netD_B.append(loss_D_B.item())
 
-# 		now_iteration += 1
-# 		#イテレーション数が上限に達したらループを抜ける
-# 		if(now_iteration>=total_iterations):
-# 			break
-# 	#イテレーション数が上限に達したらループを抜ける
-# 	if(now_iteration>=total_iterations):
-# 		break
+	# 	#学習状況をstdoutに出力
+	# 	if now_iteration % 10 == 0:
+	# 		print(f"[{now_iteration}/{total_iterations}]", end="")
+	# 		for key, value in log_G.items():
+	# 			print(f" {key}:{value:.5f}", end="")
+	# 		for key, value in log_D.items():
+	# 			print(f" {key}:{value:.5f}", end="")
+	# 		print("")
+
+	# 	#学習状況をファイルに出力
+	# 	if((now_iteration%output_iter==0) or (now_iteration+1>=total_iterations)):
+	# 		out_dir = os.path.join(output_dir, f"iteration{now_iteration}")
+	# 		#出力用ディレクトリがなければ作る
+	# 		os.makedirs(out_dir, exist_ok=True)
+
+	# 		#ここまでの学習にかかった時間を出力
+	# 		t_epoch_finish = time.time()
+	# 		total_time = t_epoch_finish - t_epoch_start
+	# 		with open(os.path.join(out_dir,"time.txt"), mode='w') as f:
+	# 			f.write("total_time: {:.4f} sec.\n".format(total_time))
+
+	# 		#学習済みモデル（CPU向け）を出力
+	# 		netG_A2B.eval()
+	# 		torch.save(netG_A2B.to('cpu').state_dict(), os.path.join(out_dir, "generator_A2B_trained_model_cpu.pth"))
+	# 		netG_A2B.to(device)
+	# 		netG_A2B.train()
+
+	# 		netG_B2A.eval()
+	# 		torch.save(netG_B2A.to('cpu').state_dict(), os.path.join(out_dir, "generator_B2A_trained_model_cpu.pth"))
+	# 		netG_B2A.to(device)
+	# 		netG_B2A.train()
+
+	# 		#lossのグラフを出力
+	# 		plt.clf()
+	# 		plt.figure(figsize=(10, 5))
+	# 		plt.title("Generator_A2B and Discriminator_B Adversarial Loss During Training")
+	# 		plt.plot(adversarial_losses_netG_A2B, label="netG_A2B")
+	# 		plt.plot(adversarial_losses_netD_B, label="netD_B")
+	# 		plt.xlabel("iterations")
+	# 		plt.ylabel("Loss")
+	# 		plt.legend()
+	# 		plt.grid()
+	# 		plt.savefig(os.path.join(out_dir, "loss_netG_A2B_netD_B.png"))
+	# 		plt.close()
+
+	# 		plt.clf()
+	# 		plt.figure(figsize=(10, 5))
+	# 		plt.title("Generator_B2A and Discriminator_A Adversarial Loss During Training")
+	# 		plt.plot(adversarial_losses_netG_B2A, label="netG_B2A")
+	# 		plt.plot(adversarial_losses_netD_A, label="netD_A")
+	# 		plt.xlabel("iterations")
+	# 		plt.ylabel("Loss")
+	# 		plt.legend()
+	# 		plt.grid()
+	# 		plt.savefig(os.path.join(out_dir, "loss_netG_B2A_netD_A.png"))
+	# 		plt.close()
+
+	# 	now_iteration += 1
+	# 	#イテレーション数が上限に達したらループを抜ける
+	# 	if(now_iteration>=total_iterations):
+	# 		break
+	# #イテレーション数が上限に達したらループを抜ける
+	# if(now_iteration>=total_iterations):
+	# 	break

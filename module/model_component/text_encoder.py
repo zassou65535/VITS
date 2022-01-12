@@ -2,6 +2,7 @@
 
 import random
 import numpy as np
+import math
 
 import torch
 import torch.nn as nn
@@ -237,11 +238,11 @@ class Encoder(nn.Module):
             #print(hidden_channels, hidden_channels, n_heads, p_dropout, window_size) : 
             #192 192 2 0.1 4
             self.attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, window_size=window_size))
-            self.norm_layers_1.append(LayerNorm(hidden_channels))
+            self.norm_layers_1.append(torch.nn.LayerNorm(hidden_channels))
             #print(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout) :
             #192 192 768 3 0.1
             self.ffn_layers.append(FeedForwardNetwork(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout=p_dropout))
-            self.norm_layers_2.append(LayerNorm(hidden_channels))
+            self.norm_layers_2.append(torch.nn.LayerNorm(hidden_channels))
 
     def forward(self, x, x_mask):
         #x_mask.size() : torch.Size([64, 1, 145(example)])
@@ -251,18 +252,18 @@ class Encoder(nn.Module):
         for i in range(self.n_layers):
             y = self.attn_layers[i](x, x, attn_mask)
             y = self.drop(y)
-            x = self.norm_layers_1[i](x + y)
+            x = self.norm_layers_1[i]((x + y).transpose(1, -1)).transpose(1, -1)
 
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
-            x = self.norm_layers_2[i](x + y)
+            x = self.norm_layers_2[i]((x + y).transpose(1, -1)).transpose(1, -1)
         x = x * x_mask
         return x
 
 class TextEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, n_vocab):
         super().__init__()
-        self.n_vocab = 178
+        self.n_vocab = n_vocab
         self.out_channels = 192
         self.hidden_channels = 192
         self.filter_channels = 768

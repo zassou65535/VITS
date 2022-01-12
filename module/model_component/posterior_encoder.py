@@ -54,37 +54,34 @@ class WN(torch.nn.Module):
             in_layer = torch.nn.utils.weight_norm(in_layer, name='weight')
             self.in_layers.append(in_layer)
 
-        # last one is not necessary
-        if i < n_layers - 1:
-            res_skip_channels = 2 * hidden_channels
-        else:
-            res_skip_channels = hidden_channels
+            # last one is not necessary
+            if i < n_layers - 1:
+                res_skip_channels = 2 * hidden_channels
+            else:
+                res_skip_channels = hidden_channels
 
-        res_skip_layer = torch.nn.Conv1d(hidden_channels, res_skip_channels, 1)
-        res_skip_layer = torch.nn.utils.weight_norm(res_skip_layer, name='weight')
-        self.res_skip_layers.append(res_skip_layer)
+            res_skip_layer = torch.nn.Conv1d(hidden_channels, res_skip_channels, 1)
+            res_skip_layer = torch.nn.utils.weight_norm(res_skip_layer, name='weight')
+            self.res_skip_layers.append(res_skip_layer)
 
-    def forward(self, x, x_mask, g=None, **kwargs):
+    def forward(self, x, x_mask, g, **kwargs):
+        #x.size(), x_mask.size() : torch.Size([batch_size, 192, length(可変)]) torch.Size([batch_size, 1, length])
         output = torch.zeros_like(x)
         n_channels_tensor = torch.IntTensor([self.hidden_channels])
 
-        if g is not None:
-            g = self.cond_layer(g)
+        g = self.cond_layer(g)
 
         for i in range(self.n_layers):
             x_in = self.in_layers[i](x)
-            if g is not None:
-                cond_offset = i * 2 * self.hidden_channels
-                g_l = g[:,cond_offset:cond_offset+2*self.hidden_channels,:]
-            else:
-                g_l = torch.zeros_like(x_in)
+            cond_offset = i * 2 * self.hidden_channels
+            g_l = g[:,cond_offset:cond_offset+2*self.hidden_channels,:]
 
             acts = fused_add_tanh_sigmoid_multiply(
                 x_in,
                 g_l,
                 n_channels_tensor)
             acts = self.drop(acts)
-
+            #acts.size() : torch.Size([batch_size, 192, length])
             res_skip_acts = self.res_skip_layers[i](acts)
             if i < self.n_layers - 1:
                 res_acts = res_skip_acts[:,:self.hidden_channels,:]
@@ -96,7 +93,7 @@ class WN(torch.nn.Module):
 
 #linear spectrogramを入力にとりEncodeを実行するモデル
 class PosteriorEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, gin_channels):
         super(PosteriorEncoder, self).__init__()
         self.in_channels = 513
         self.out_channels = 192
@@ -104,17 +101,17 @@ class PosteriorEncoder(nn.Module):
         self.kernel_size = 5
         self.dilation_rate = 1
         self.n_layers = 16
-        self.gin_channels = 256
+        self.gin_channels = gin_channels
 
         self.pre = nn.Conv1d(self.in_channels, self.hidden_channels, 1)
-        self.enc = modules.WN(self.hidden_channels, self.kernel_size, self.dilation_rate, self.n_layers, gin_channels=self.gin_channels)
+        self.enc = WN(self.hidden_channels, self.kernel_size, self.dilation_rate, self.n_layers, gin_channels=self.gin_channels)
         self.proj = nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
 
-    def forward(self, spectrogram, spectrogram_lengths, g=None):
-        x_mask = torch.unsqueeze(sequence_mask(spectrogram_lengths, spectrogram.size(2)), 1).to(spectrogram.dtype)
-        x = self.pre(x) * x_mask
-        x = self.enc(x, x_mask, g=g)
-        stats = self.proj(x) * x_mask
+    def forward(self, spectrogram, spectrogram_lengths, g):
+        spectrogram_mask = torch.unsqueeze(sequence_mask(spectrogram_lengths, spectrogram.size(2)), 1).to(spectrogram.dtype)
+        x = self.pre(spectrogram) * spectrogram_mask
+        x = self.enc(x, spectrogram_mask, g=g)
+        stats = self.proj(x) * spectrogram_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
-        z = (m + torch.randn_like(m) * torch.exp(logs)) * x_mask
-        return z, m, logs, x_mask
+        z = (m + torch.randn_like(m) * torch.exp(logs)) * spectrogram_mask
+        return z, m, logs, spectrogram_mask
