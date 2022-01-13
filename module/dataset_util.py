@@ -144,3 +144,14 @@ def collate_fn(batch):
 			spec_padded, spec_lengths, \
 			speaker_id, \
 			text_padded, text_lengths
+
+#batch内の各tensorについて、start_indices[i]で指定されたindexから長さsegment_sizeの箇所を取り出す関数
+#学習時、スペクトログラムや音声波形について、時間軸に沿って指定した長さだけ切り取るのに用いる
+def slice_segments(input_tensor, start_indices, segment_size):
+	output_tensor = torch.zeros_like(input_tensor[:, ..., :segment_size])
+	batch_size = input_tensor.size(0)
+	for batch_index in range(batch_size):
+		index_start = start_indices[batch_index]
+		index_end = index_start + segment_size
+		output_tensor[batch_index] = input_tensor[batch_index, ..., index_start:index_end]
+	return output_tensor

@@ -31,6 +31,7 @@ print("Random Seed: ", manualSeed)
 random.seed(manualSeed)
 torch.manual_seed(manualSeed)
 
+###以下は学習に必要なパラメーター###
 #前処理用スクリプトによって出力された、データセットに関するtxtファイルへのパス
 train_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_train.txt"#学習用
 validation_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_validation.txt"#推論用
@@ -48,6 +49,23 @@ lr = 0.0002
 output_iter = 5000
 #学習に使用する音素を列挙
 phoneme_list = [' ', 'I', 'N', 'U', 'a', 'b', 'by', 'ch', 'cl', 'd', 'dy', 'e', 'f', 'g', 'gy', 'h', 'hy', 'i', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'p', 'py', 'r', 'ry', 's', 'sh', 't', 'ts', 'ty', 'u', 'v', 'w', 'y', 'z']
+#話者の数
+n_speakers = 100
+
+#生成するor切り出す音声波形の大きさ
+segment_size = 8192
+
+###以下は音声処理に必要なパラメーター###
+#扱う音声のサンプリングレート
+sampling_rate = 22050
+#スペクトログラムの計算時に何サンプル単位でSTFTを行うか
+filter_length = 1024
+#スペクトログラムの計算時に適用する窓の大きさ
+win_length = 1024
+#ホップ数　何サンプルずらしながらSTFTを行うか
+hop_length = 256
+#メルスペクトログラムの縦軸(周波数領域)の次元
+melspec_freq_dim = 80
 
 #出力用ディレクトリがなければ作る
 os.makedirs(output_dir, exist_ok=True)
@@ -112,8 +130,8 @@ optimizerD = optim.AdamW(netD.parameters(), lr=lr, betas=(beta1, beta2), weight_
 # adversarial_losses_netG_B2A = []
 # adversarial_losses_netD_A = []
 # adversarial_losses_netD_B = []
-# #現在のイテレーション回数
-# now_iteration = 0
+#現在のイテレーション回数
+now_iteration = 0
 
 print("Start Training")
 
@@ -138,9 +156,9 @@ for epoch in itertools.count():
 		#text_padded.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
 
 		###Generatorによる生成###
-		wav_predicted, wav_length_predicted, attn, ids_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_padded, spec_length, speaker_id)
-		#y_hat : torch.Size([64, 1, 8192])　生成された波形
-		#l_length : torch.Size([64])
+		wav_generated, wav_length_generated, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_padded, spec_length, speaker_id)
+		#wav_generated : torch.Size([64, 1, 8192])　生成された波形
+		#wav_length_generated : torch.Size([64])
 		#attn : torch.Size([64, 1, 400, 181])
 		#ids_slice : torch.Size([64])
 		#x_mask : torch.Size([64, 1, 181])
@@ -154,34 +172,26 @@ for epoch in itertools.count():
 		#logs_q : torch.Size([64, 192, 400])
 
 		#データセット中のスペクトログラムからメルスペクトログラムを計算
-		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=1024, f_min=0, f_max=22050//2, n_mels=80, sample_rate=22050)
-		mel_spec = torch.matmul(spec.transpose(-1, -2), fbanks).transpose(-1, -2)
-		print(mel_spec.size())
-
-	# 	mel_spec = spec_to_mel_torch(
-	# 		spec, 
-	# 		hps.data.filter_length, 
-	# 		hps.data.n_mel_channels, 
-	# 		hps.data.sampling_rate,
-	# 		hps.data.mel_fmin, 
-	# 		hps.data.mel_fmax)
-	# 	y_mel = commons.slice_segments(mel, ids_slice, hps.train.segment_size // hps.data.hop_length)
-	# 	y_hat_mel = mel_spectrogram_torch(
-	# 		y_hat.squeeze(1), 
-	# 		hps.data.filter_length, 
-	# 		hps.data.n_mel_channels, 
-	# 		hps.data.sampling_rate, 
-	# 		hps.data.hop_length, 
-	# 		hps.data.win_length, 
-	# 		hps.data.mel_fmin, 
-	# 		hps.data.mel_fmax
-	# 	)
+		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=filter_length//2 + 1, f_min=0, f_max=sampling_rate//2, n_mels=melspec_freq_dim, sample_rate=sampling_rate).to(device)
+		mel_spec = torch.matmul(spec_padded.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
+		#batch内の各メルスペクトログラム(上で計算したもの)について、id_sliceで指定されたindexから時間軸に沿って(segment_size//hop_length)サンプル分取り出す
+		mel_spec_sliced = slice_segments(input_tensor=mel_spec, start_indices=id_slice, segment_size=segment_size//hop_length)
 		
-	# 	#y : torch.Size([64, 1, 102577(example)])
-	# 	#ids_slice : torch.Size([64])
-	# 	#hps.data.hop_length : 256
-	# 	#hps.train.segment_size : 8192
-	# 	y = commons.slice_segments(y, ids_slice * hps.data.hop_length, hps.train.segment_size) # slice 
+		#Generatorによって生成された波形からメルスペクトログラムを計算
+		spec_generated = torchaudio.functional.spectrogram(
+									waveform=wav_generated.squeeze(1),
+									pad=0,
+									window=torch.hann_window(win_length).to(device),
+									n_fft=filter_length,
+									hop_length=hop_length,
+									win_length=win_length,
+									power=2,
+									normalized=False
+								)
+		mel_spec_generated = torch.matmul(spec_generated.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
+		
+		#データセット中の波形「wav_padded」について、batch内の各波形について、id_slice*hop_lengthで指定されたindexから時間軸に沿ってsegment_sizeサンプル分取り出す
+		wav_padded_sliced = slice_segments(input_tensor=wav_padded, start_indices=id_slice*hop_length, segment_size=segment_size)
 
 	# 	# Discriminatorの学習
 	# 	# y.size() : torch.Size([64, 1, 8192])　本物波形
@@ -379,10 +389,12 @@ for epoch in itertools.count():
 	# 		plt.savefig(os.path.join(out_dir, "loss_netG_B2A_netD_A.png"))
 	# 		plt.close()
 
-	# 	now_iteration += 1
-	# 	#イテレーション数が上限に達したらループを抜ける
-	# 	if(now_iteration>=total_iterations):
-	# 		break
-	# #イテレーション数が上限に達したらループを抜ける
-	# if(now_iteration>=total_iterations):
-	# 	break
+		now_iteration += 1
+		#イテレーション数が上限に達したらループを抜ける
+		if(now_iteration>=total_iterations):
+			break
+		break
+	#イテレーション数が上限に達したらループを抜ける
+	if(now_iteration>=total_iterations):
+		break
+	break
