@@ -183,15 +183,18 @@ for epoch in itertools.count():
 		mel_spec_sliced = slice_segments(input_tensor=mel_spec, start_indices=id_slice, segment_size=segment_size//hop_length)
 		
 		#Generatorによって生成された波形からメルスペクトログラムを計算
+		pad_size = int((filter_length-hop_length)/2)
+		wav_generated_padded = torch.nn.functional.pad(wav_generated, (pad_size, pad_size), mode='reflect')
 		spec_generated = torchaudio.functional.spectrogram(
-									waveform=wav_generated,
-									pad=0,
+									waveform=wav_generated_padded,
+									pad=0,#torchaudio.functional.spectrogram内で使われているtorch.nn.functional.padはmode='constant'となっているが、今回はmode='reflect'としたいため手動でpaddingする
 									window=torch.hann_window(win_length).to(device),
 									n_fft=filter_length,
 									hop_length=hop_length,
 									win_length=win_length,
 									power=2,
-									normalized=False
+									normalized=False,
+									center=False
 								).squeeze(1)
 		mel_spec_generated = torch.matmul(spec_generated.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
 		
@@ -201,7 +204,7 @@ for epoch in itertools.count():
 		#####Discriminatorの学習#####
 		# wav_padded.size() : torch.Size([64, 1, 8192])　本物波形
 		# wav_generated.size() : torch.Size([64, 1, 8192])　生成された波形
-		authenticity_real, _ = netD(wav_padded)
+		authenticity_real, _ = netD(wav_padded_sliced)
 		authenticity_fake, _ = netD(wav_generated.detach())
 
 		#lossを計算
@@ -220,7 +223,7 @@ for epoch in itertools.count():
 		optimizerD.step()
 
 		#####Generatorの学習#####
-		authenticity_real, d_feature_map_real = netD(wav_padded)
+		authenticity_real, d_feature_map_real = netD(wav_padded_sliced)
 		authenticity_fake, d_feature_map_fake = netD(wav_generated)
 
 		#lossを計算
@@ -286,12 +289,14 @@ for epoch in itertools.count():
 
 			#####lossのグラフを出力#####
 			plt.clf()
-			plt.figure(figsize=(16, 5))
+			plt.figure(figsize=(16, 6))
+			plt.subplots_adjust(wspace=0.4, hspace=0.6)
 			for i, (loss_name, loss_list) in enumerate(losses_recorded.items(), 0):
 				plt.subplot(2, 3, i+1)
-				plt.plot(loss_list)
+				plt.title(loss_name)
+				plt.plot(loss_list, label="loss")
 				plt.xlabel("iterations")
-				plt.ylabel(loss_name)
+				plt.ylabel("loss")
 				plt.legend()
 				plt.grid()
 			plt.savefig(os.path.join(out_dir, "loss.png"))
@@ -305,4 +310,3 @@ for epoch in itertools.count():
 	#イテレーション数が上限に達したらループを抜ける
 	if(now_iteration>=total_iterations):
 		break
-	break

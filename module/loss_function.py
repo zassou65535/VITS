@@ -60,7 +60,7 @@ def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
 def feature_loss(feature_map_real, feature_map_fake):
 	loss = 0
 	for fmap_real, fmap_fake in zip(feature_map_real, feature_map_fake):
-		for fmreal, fmfake in zip(fmap_real, map_fake):
+		for fmreal, fmfake in zip(fmap_real, fmap_fake):
 			fmreal = fmreal.float().detach()
 			fmfake = fmfake.float()
 			loss += torch.mean(torch.abs(fmreal - fmfake))

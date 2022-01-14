@@ -65,15 +65,18 @@ class AudioSpeakerTextLoader(torch.utils.data.Dataset):
 		if os.path.exists(spec_filename):
 			spec = torch.load(spec_filename)
 		else:
+			pad_size = int((self.filter_length-self.hop_length)/2)
+			wav_padded = torch.nn.functional.pad(wav, (pad_size, pad_size), mode='reflect')
 			spec = torchaudio.functional.spectrogram(
 									waveform=wav,
-									pad=0,
+									pad=0,#torchaudio.functional.spectrogram内で使われているtorch.nn.functional.padはmode='constant'となっているが、今回はmode='reflect'としたいため手動でpaddingする
 									window=torch.hann_window(self.win_length),
 									n_fft=self.filter_length,
 									hop_length=self.hop_length,
 									win_length=self.win_length,
 									power=2,
-									normalized=False
+									normalized=False,
+									center=False
 								)
 			spec = torch.squeeze(spec, 0)
 			torch.save(spec, spec_filename)
