@@ -74,7 +74,7 @@ class Discriminator(torch.nn.Module):
         #conv1dとleaky_reluの適用
         for conv1d in self.conv1ds:
             x = conv1d(x)
-            x = F.leaky_relu(x, modules.LRELU_SLOPE)
+            x = F.leaky_relu(x, negative_slope=0.1)
             feature_maps.append(x)
         x = self.conv1d_post(x)
         feature_maps.append(x)

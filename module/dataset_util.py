@@ -59,7 +59,6 @@ class AudioSpeakerTextLoader(torch.utils.data.Dataset):
 	def get_audio(self, wavfile_path):
 		#wavファイルの読み込み
 		wav, _ = torchaudio.load(wavfile_path)
-		wav = wav.squeeze(dim=0)
 		#wavからspectrogramを計算
 		#計算結果はファイルに保存しておき、2回目以降はそれを読み込むだけにする
 		spec_filename = wavfile_path.replace(".wav", ".spec.pt")
@@ -113,24 +112,26 @@ def collate_fn(batch):
 	# 	(wav, spec, speaker_id, text),
 	# 	....
 	# ]
-	max_wav_len = max([x[0].size(0) for x in batch])#wavの最大の長さを算出
+	max_wav_len = max([x[0].size(1) for x in batch])#wavの最大の長さを算出
 	max_spec_len = max([x[1].size(1) for x in batch])#spectrogramの最大の長さを算出
 	max_text_len = max([x[3].size(0) for x in batch])#textの最大の長さを算出
 
-	wav_lengths = torch.LongTensor(len(batch))#torch.size([len(batch)])
-	spec_lengths = torch.LongTensor(len(batch))
-	speaker_id = torch.LongTensor(len(batch))
-	text_lengths = torch.LongTensor(len(batch))
+	batch_size = len(batch)
 
-	wav_padded = torch.zeros(len(batch), max_wav_len, dtype=torch.float32)
-	spec_padded = torch.zeros(len(batch), batch[0][1].size(0), max_spec_len, dtype=torch.float32)
-	text_padded = torch.zeros(len(batch), max_text_len, dtype=torch.long)
+	wav_lengths = torch.LongTensor(batch_size)#torch.size([batch_size])
+	spec_lengths = torch.LongTensor(batch_size)
+	speaker_id = torch.LongTensor(batch_size)
+	text_lengths = torch.LongTensor(batch_size)
+
+	wav_padded = torch.zeros(batch_size, 1, max_wav_len, dtype=torch.float32)
+	spec_padded = torch.zeros(batch_size, batch[0][1].size(0), max_spec_len, dtype=torch.float32)
+	text_padded = torch.zeros(batch_size, max_text_len, dtype=torch.long)
 
 	#text_padded, spec_padded, wav_paddedは全ての要素が0で初期化されているが、
 	#左詰めで元のtext, spec, wavで上書きすることによりzero-paddingされたtensorを取得できる
 	for i, (wav_row, spec_row, speaker_id_row, text_row) in enumerate(batch, 0):
-		wav_padded[i, :wav_row.size(0)] = wav_row
-		wav_lengths[i] = wav_row.size(0)
+		wav_padded[i, :, :wav_row.size(1)] = wav_row
+		wav_lengths[i] = wav_row.size(1)
 
 		spec_padded[i, :, :spec_row.size(1)] = spec_row
 		spec_lengths[i] = spec_row.size(1)
