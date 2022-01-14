@@ -229,7 +229,7 @@ for epoch in itertools.count():
 		#lossを計算
 		duration_loss = torch.sum(wav_length_generated.float())#duration loss
 		mel_reconstruction_loss = F.l1_loss(mel_spec_sliced, mel_spec_generated)*45#reconstruction loss
-		kl_loss = kl_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
+		kl_loss = kl_divergence_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
 		feature_matching_loss = feature_loss(d_feature_map_real, d_feature_map_fake)#feature matching loss(Discriminatorの中間層の出力分布の統計量を, realとfakeの場合それぞれにおいて互いの分布間で近づける)
 		adversarial_loss_G, _ = generator_adversarial_loss(authenticity_fake)#adversarial loss
 
@@ -306,7 +306,6 @@ for epoch in itertools.count():
 		#イテレーション数が上限に達したらループを抜ける
 		if(now_iteration>=total_iterations):
 			break
-		break
 	#イテレーション数が上限に達したらループを抜ける
 	if(now_iteration>=total_iterations):
 		break

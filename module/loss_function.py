@@ -44,7 +44,7 @@ def generator_adversarial_loss(discriminator_fake_outputs):
 		loss += l
 	return loss, generator_losses
 
-def kl_loss(z_p, logs_q, m_p, logs_p, z_mask):
+def kl_divergence_loss(z_p, logs_q, m_p, logs_p, z_mask):
 	z_p = z_p.float()
 	logs_q = logs_q.float()
 	m_p = m_p.float()
