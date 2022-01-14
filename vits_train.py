@@ -24,6 +24,7 @@ import torchaudio
 from module.dataset_util import *
 from module.vits_generator import VitsGenerator
 from module.vits_discriminator import VitsDiscriminator
+from module.loss_function import *
 
 #乱数のシードを設定
 manualSeed = 999
@@ -193,61 +194,41 @@ for epoch in itertools.count():
 		#データセット中の波形「wav_padded」について、batch内の各波形について、id_slice*hop_lengthで指定されたindexから時間軸に沿ってsegment_sizeサンプル分取り出す
 		wav_padded_sliced = slice_segments(input_tensor=wav_padded, start_indices=id_slice*hop_length, segment_size=segment_size)
 
-	# 	# Discriminatorの学習
-	# 	# y.size() : torch.Size([64, 1, 8192])　本物波形
-	# 	# y_hat.size() : torch.Size([64, 1, 8192])　生成された波形
-	# 	#Dへの入力は音声波形
-	# 	y_d_hat_r, y_d_hat_g, _, _ = net_d(y, y_hat.detach())
-	# 	with autocast(enabled=False):
-	# 		loss_disc, losses_disc_r, losses_disc_g = discriminator_loss(y_d_hat_r, y_d_hat_g)
-	# 		loss_disc_all = loss_disc
-	# 	optim_d.zero_grad()
-	# 	scaler.scale(loss_disc_all).backward()
-	# 	scaler.unscale_(optim_d)
-	# 	grad_norm_d = commons.clip_grad_value_(net_d.parameters(), None)
-	# 	scaler.step(optim_d)
+		#####Discriminatorの学習#####
+		# wav_padded.size() : torch.Size([64, 1, 8192])　本物波形
+		# wav_generated.size() : torch.Size([64, 1, 8192])　生成された波形
+		authenticity_real, _ = netD(wav_padded)
+		authenticity_fake, _ = netD(wav_generated)
+		discriminator_adversarial_loss, _, _ = discriminator_adversarial_loss(authenticity_real, authenticity_fake.detach())
+		#勾配をリセット
+		optimizerD.zero_grad()
+		#勾配を計算
+		discriminator_adversarial_loss.backward()
+		#gradient explosionを避けるため勾配を制限
+	 	nn.utils.clip_grad_norm_(netD.parameters(), max_norm=1.0, norm_type=2.0)
+		#パラメーターの更新
+		optimizerD.step()
 
-	# 	with autocast(enabled=hps.train.fp16_run):
-	# 	# Generatorの学習
-	# 	y_d_hat_r, y_d_hat_g, fmap_r, fmap_g = net_d(y, y_hat)
-	# 	with autocast(enabled=False):
-	# 		loss_dur = torch.sum(l_length.float())#duration loss
-	# 		loss_mel = F.l1_loss(y_mel, y_hat_mel) * hps.train.c_mel#reconstruction loss
-	# 		loss_kl = kl_loss(z_p, logs_q, m_p, logs_p, z_mask) * hps.train.c_kl#KL divergence
+		#####Generatorの学習#####
+		authenticity_real, d_feature_map_real = netD(wav_padded)
+		authenticity_fake, d_feature_map_fake = netD(wav_generated)
 
-	# 		loss_fm = feature_loss(fmap_r, fmap_g)#feature matching loss(GANの中間層の出力分布の統計量を，realとfakeの場合それぞれにおいて互いの分布間で近づける)
-	# 		loss_gen, losses_gen = generator_loss(y_d_hat_g)#adversarial loss(GANによるloss)
-	# 		loss_gen_all = loss_gen + loss_fm + loss_mel + loss_dur + loss_kl
-	# 	optim_g.zero_grad()
-	# 	scaler.scale(loss_gen_all).backward()
-	# 	scaler.unscale_(optim_g)
-	# 	grad_norm_g = commons.clip_grad_value_(net_g.parameters(), None)
-	# 	scaler.step(optim_g)
-	# 	scaler.update()
+		duration_loss = torch.sum(wav_length_generated.float())#duration loss
+		mel_reconstruction_loss = F.l1_loss(mel_spec, mel_spec_generated)*45#reconstruction loss
+		kl_loss = kl_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
+		feature_matching_loss = feature_loss(d_feature_map_real, d_feature_map_fake)#feature matching loss(Discriminatorの中間層の出力分布の統計量を, realとfakeの場合それぞれにおいて互いの分布間で近づける)
+		generator_adversarial_loss, _ = generator_adversarial_loss(authenticity_fake)#adversarial loss
+		
+		loss_entire = duration_loss + mel_reconstruction_loss + kl_loss + feature_matching_loss + generator_adversarial_loss
 
-	# 	#-------------------------
- 	# 	#Generatorの学習
-	# 	#-------------------------
-	# 	#Generator adversarial losses: hinge loss (from Scyclone paper eq.1)
-	# 	fake_B = netG_A2B(real_A)
-	# 	#fake_Bの中央128フレームを切り取ったものをDiscriminatorへの入力とする
-	# 	pred_fake_B = netD_B(torch.narrow(fake_B, dim=2, start=16, length=128))
-	# 	loss_adv_G_A2B = torch.mean(F.relu(-1.0 * pred_fake_B))
-	# 	fake_A = netG_B2A(real_B)
-	# 	pred_fake_A = netD_A(torch.narrow(fake_A, dim=2, start=16, length=128))
-	# 	loss_adv_G_B2A = torch.mean(F.relu(-1.0 * pred_fake_A))
-
-	# 	#cycle consistency losses: L1 loss (from Scyclone paper eq.1)
-	# 	cycled_A = netG_B2A(fake_B)
-	# 	loss_cycle_ABA = F.l1_loss(cycled_A, real_A)
-	# 	cycled_B = netG_A2B(fake_A)
-	# 	loss_cycle_BAB = F.l1_loss(cycled_B, real_B)
-
-	# 	#identity mapping losses: L1 loss (from Scyclone paper eq.1)
-	# 	same_B = netG_A2B(real_B)
-	# 	loss_identity_B = F.l1_loss(same_B, real_B)
-	# 	same_A = netG_B2A(real_A)
-	# 	loss_identity_A = F.l1_loss(same_A, real_A)
+		#勾配をリセット
+		optimizerG.zero_grad()
+		#勾配を計算
+		loss_entire.backward()
+		#gradient explosionを避けるため勾配を制限
+	 	nn.utils.clip_grad_norm_(netG.parameters(), max_norm=1.0, norm_type=2.0)
+		#パラメーターの更新
+		optimizerG.step()
 
 	# 	#Total loss
 	# 	loss_G = (
