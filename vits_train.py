@@ -52,6 +52,8 @@ lr_decay = 0.999875
 output_iter = 5000
 #学習に使用する音素を列挙
 phoneme_list = [' ', 'I', 'N', 'U', 'a', 'b', 'by', 'ch', 'cl', 'd', 'dy', 'e', 'f', 'g', 'gy', 'h', 'hy', 'i', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'p', 'py', 'r', 'ry', 's', 'sh', 't', 'ts', 'ty', 'u', 'v', 'w', 'y', 'z']
+#音素の種類数
+n_phoneme = len(phoneme_list)
 #話者の数
 n_speakers = 100
 
@@ -112,7 +114,7 @@ validation_loader = torch.utils.data.DataLoader(
 print("validation dataset size: {}".format(len(validation_dataset)))
 
 #Generatorのインスタンスを生成
-netG = VitsGenerator(n_vocab=len(phoneme_list), n_speakers=100)
+netG = VitsGenerator(n_vocab=n_phoneme, n_speakers=100)
 #ネットワークをデバイスに移動
 netG = netG.to(device)
 

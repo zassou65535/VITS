@@ -183,12 +183,12 @@ class VitsGenerator(nn.Module):
     o = self.decoder((z * y_mask)[:,:,:max_len], g=g)
     return o
 
-  def voice_conversion(self, y, y_lengths, speaker_id_source, speaker_id_target):
+  def voice_conversion(self, y, y_lengths, source_speaker_id, target_speaker_id):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
-    g_source = self.speaker_embedding(speaker_id_source).unsqueeze(-1) #話者埋め込み用ネットワーク
-    g_target = self.speaker_embedding(speaker_id_target).unsqueeze(-1) #話者埋め込み用ネットワーク
+    g_source = self.speaker_embedding(source_speaker_id).unsqueeze(-1) #話者埋め込み用ネットワーク
+    g_target = self.speaker_embedding(target_speaker_id).unsqueeze(-1) #話者埋め込み用ネットワーク
     z, m_q, logs_q, y_mask = self.posterior_encoder(y, y_lengths, g=g_source)
     z_p = self.flow(z, y_mask, g=g_source)
     z_hat = self.flow(z_p, y_mask, g=g_target, reverse=True)
-    o_hat = self.decoder(z_hat * y_mask, g=g_target)
+    o_hat = self.decoder(z_hat * y_mask, embedded_speaker_id=g_target)
     return o_hat, y_mask, (z, z_p, z_hat)
