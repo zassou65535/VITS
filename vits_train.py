@@ -159,19 +159,19 @@ for epoch in itertools.count():
 	#データセットA, Bからbatch_size枚ずつ取り出し学習
 	for data in train_loader:
 		#deviceに転送
-		wav_padded, wav_length = data[0].to(device), data[1].to(device)
-		spec_padded, spec_length = data[2].to(device), data[3].to(device)
+		wav_real, wav_real_length = data[0].to(device), data[1].to(device)
+		spec_real, spec_real_length = data[2].to(device), data[3].to(device)
 		speaker_id = data[4].to(device)
 		text_padded, text_length = data[5].to(device), data[6].to(device)
-		#wav_padded.size(), wav_length.size() : torch.Size([batch_size, 音声のサンプル数]) torch.Size([batch_size])
-		#spec_padded.size(), spec_length.size() : torch.Size([batch_size, 513(周波数領域), STFT後のサンプル数]) torch.Size([batch_size])
+		#wav_real.size(), wav_real_length.size() : torch.Size([batch_size, 音声のサンプル数]) torch.Size([batch_size])
+		#spec_real.size(), spec_real_length.size() : torch.Size([batch_size, 513(周波数領域), STFT後のサンプル数]) torch.Size([batch_size])
 		#speaker_id.size() : torch.Size([batch_size])
 		#text_padded.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
 
 		###Generatorによる生成###
-		wav_generated, wav_length_generated, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_padded, spec_length, speaker_id)
-		#wav_generated : torch.Size([64, 1, 8192])　生成された波形
-		#wav_length_generated : torch.Size([64])
+		wav_fake, wav_fake_length, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_real, spec_real_length, speaker_id)
+		#wav_fake : torch.Size([64, 1, 8192])　生成された波形
+		#wav_fake_length : torch.Size([64])
 		#attn : torch.Size([64, 1, 400, 181])
 		#ids_slice : torch.Size([64])
 		#x_mask : torch.Size([64, 1, 181])
@@ -186,15 +186,15 @@ for epoch in itertools.count():
 
 		#データセット中のスペクトログラムからメルスペクトログラムを計算
 		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=filter_length//2 + 1, f_min=0, f_max=sampling_rate//2, n_mels=melspec_freq_dim, sample_rate=sampling_rate).to(device)
-		mel_spec = torch.matmul(spec_padded.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
+		mel_spec_real = torch.matmul(spec_real.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
 		#batch内の各メルスペクトログラム(上で計算したもの)について、id_sliceで指定されたindexから時間軸に沿って(segment_size//hop_length)サンプル分取り出す
-		mel_spec_sliced = slice_segments(input_tensor=mel_spec, start_indices=id_slice, segment_size=segment_size//hop_length)
+		mel_spec_real = slice_segments(input_tensor=mel_spec_real, start_indices=id_slice, segment_size=segment_size//hop_length)
 		
 		#Generatorによって生成された波形からメルスペクトログラムを計算
 		pad_size = int((filter_length-hop_length)/2)
-		wav_generated_padded = torch.nn.functional.pad(wav_generated, (pad_size, pad_size), mode='reflect')
-		spec_generated = torchaudio.functional.spectrogram(
-									waveform=wav_generated_padded,
+		wav_fake_padded = torch.nn.functional.pad(wav_fake, (pad_size, pad_size), mode='reflect')
+		spec_fake = torchaudio.functional.spectrogram(
+									waveform=wav_fake_padded,
 									pad=0,#torchaudio.functional.spectrogram内で使われているtorch.nn.functional.padはmode='constant'となっているが、今回はmode='reflect'としたいため手動でpaddingする
 									window=torch.hann_window(win_length).to(device),
 									n_fft=filter_length,
@@ -204,16 +204,16 @@ for epoch in itertools.count():
 									normalized=False,
 									center=False
 								).squeeze(1)
-		mel_spec_generated = torch.matmul(spec_generated.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
+		mel_spec_fake = torch.matmul(spec_fake.clone().transpose(-1, -2), fbanks).transpose(-1, -2)
 		
-		#データセット中の波形「wav_padded」について、batch内の各波形について、id_slice*hop_lengthで指定されたindexから時間軸に沿ってsegment_sizeサンプル分取り出す
-		wav_padded_sliced = slice_segments(input_tensor=wav_padded, start_indices=id_slice*hop_length, segment_size=segment_size)
+		#データセット中の波形「wav_real」について、batch内の各波形について、id_slice*hop_lengthで指定されたindexから時間軸に沿ってsegment_sizeサンプル分取り出す
+		wav_real = slice_segments(input_tensor=wav_real, start_indices=id_slice*hop_length, segment_size=segment_size)
 
 		#####Discriminatorの学習#####
-		# wav_padded.size() : torch.Size([64, 1, 8192])　本物波形
-		# wav_generated.size() : torch.Size([64, 1, 8192])　生成された波形
-		authenticity_real, _ = netD(wav_padded_sliced)
-		authenticity_fake, _ = netD(wav_generated.detach())
+		# wav_real.size() : torch.Size([64, 1, 8192])　本物波形
+		# wav_fake.size() : torch.Size([64, 1, 8192])　生成された波形
+		authenticity_real, _ = netD(wav_real)
+		authenticity_fake, _ = netD(wav_fake.detach())
 
 		#lossを計算
 		adversarial_loss_D, _, _ = discriminator_adversarial_loss(authenticity_real, authenticity_fake)#adversarial loss
@@ -231,12 +231,12 @@ for epoch in itertools.count():
 		optimizerD.step()
 
 		#####Generatorの学習#####
-		authenticity_real, d_feature_map_real = netD(wav_padded_sliced)
-		authenticity_fake, d_feature_map_fake = netD(wav_generated)
+		authenticity_real, d_feature_map_real = netD(wav_real)
+		authenticity_fake, d_feature_map_fake = netD(wav_fake)
 
 		#lossを計算
-		duration_loss = torch.sum(wav_length_generated.float())#duration loss
-		mel_reconstruction_loss = F.l1_loss(mel_spec_sliced, mel_spec_generated)*45#reconstruction loss
+		duration_loss = torch.sum(wav_fake_length.float())#duration loss
+		mel_reconstruction_loss = F.l1_loss(mel_spec_real, mel_spec_fake)*45#reconstruction loss
 		kl_loss = kl_divergence_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
 		feature_matching_loss = feature_loss(d_feature_map_real, d_feature_map_fake)#feature matching loss(Discriminatorの中間層の出力分布の統計量を, realとfakeの場合それぞれにおいて互いの分布間で近づける)
 		adversarial_loss_G, _ = generator_adversarial_loss(authenticity_fake)#adversarial loss
