@@ -42,7 +42,7 @@ source_speaker_id = 98
 #変換先の話者id
 target_speaker_id = 3
 #結果を出力するためのディレクトリ
-output_dir = "./output/vits/voice_conversion/"
+output_dir = "./output/vits/inference/voice_conversion/"
 #使用するデバイス
 device = "cuda:0"
 #学習に使用した音素の種類数
