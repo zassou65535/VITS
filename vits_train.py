@@ -46,6 +46,8 @@ batch_size = 16
 total_iterations = 800000
 #学習率
 lr = 0.0002
+#学習率の減衰率　各epoch終了時に減衰する処理を入れる
+lr_decay = 0.999875
 #何イテレーションごとに学習結果を出力するか
 output_iter = 5000
 #学習に使用する音素を列挙
@@ -124,6 +126,9 @@ beta1 = 0.8
 beta2 = 0.99
 optimizerG = optim.AdamW(netG.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=0.01)
 optimizerD = optim.AdamW(netD.parameters(), lr=lr, betas=(beta1, beta2), weight_decay=0.01)
+#Schedulerによって学習中に徐々に学習率を減衰させる　ExponentialLRでは学習率を指数的に減衰させることができる
+schedulerG = torch.optim.lr_scheduler.ExponentialLR(optimizerG, gamma=lr_decay)
+schedulerD = torch.optim.lr_scheduler.ExponentialLR(optimizerD, gamma=lr_decay)
 
 #学習開始
 #lossを記録することで学習過程を追うための変数　学習が安定しているかをグラフから確認できるようにする
@@ -143,11 +148,12 @@ print("Start Training")
 #学習開始時刻を保存
 t_epoch_start = time.time()
 
+#ネットワークを学習モードにする
+netG.train()
+netD.train()
+
 #エポックごとのループ　itertools.count()でカウンターを伴う無限ループを実装可能
 for epoch in itertools.count():
-	#ネットワークを学習モードにする
-	netG.train()
-	netD.train()
 	#データセットA, Bからbatch_size枚ずつ取り出し学習
 	for data in train_loader:
 		#deviceに転送
@@ -306,6 +312,9 @@ for epoch in itertools.count():
 		#イテレーション数が上限に達したらループを抜ける
 		if(now_iteration>=total_iterations):
 			break
+	#学習率を更新
+	schedulerG.step()
+	schedulerD.step()
 	#イテレーション数が上限に達したらループを抜ける
 	if(now_iteration>=total_iterations):
 		break

@@ -162,7 +162,7 @@ class VitsGenerator(nn.Module):
 
     return o, l_length, attn, ids_slice, x_mask, y_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
-  def infer(self, x, x_lengths, speaker_id, noise_scale=1, length_scale=1, noise_scale_w=1., max_len=None):
+  def infer(self, x, x_lengths, speaker_id, nnoise_scale=.667, length_scale=1, noise_scale_w=0.8, max_len=None):
     x, m_p, logs_p, x_mask = self.text_encoder(x, x_lengths)
     g = self.speaker_embedding(speaker_id).unsqueeze(-1) # [b, h, 1] #話者埋め込み用ネットワーク
 
@@ -181,7 +181,7 @@ class VitsGenerator(nn.Module):
     z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
     z = self.flow(z_p, y_mask, g=g, reverse=True)
     o = self.decoder((z * y_mask)[:,:,:max_len], g=g)
-    return o, attn, y_mask, (z, z_p, m_p, logs_p)
+    return o
 
   def voice_conversion(self, y, y_lengths, speaker_id_source, speaker_id_target):
     assert self.n_speakers > 0, "n_speakers have to be larger than 0."
