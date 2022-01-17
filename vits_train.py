@@ -162,16 +162,16 @@ for epoch in itertools.count():
 		wav_real, wav_real_length = data[0].to(device), data[1].to(device)
 		spec_real, spec_real_length = data[2].to(device), data[3].to(device)
 		speaker_id = data[4].to(device)
-		text_padded, text_length = data[5].to(device), data[6].to(device)
+		text, text_length = data[5].to(device), data[6].to(device)
 		#wav_real.size(), wav_real_length.size() : torch.Size([batch_size, 音声のサンプル数]) torch.Size([batch_size])
 		#spec_real.size(), spec_real_length.size() : torch.Size([batch_size, 513(周波数領域), STFT後のサンプル数]) torch.Size([batch_size])
 		#speaker_id.size() : torch.Size([batch_size])
-		#text_padded.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
+		#text.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
 
 		###Generatorによる生成###
-		wav_fake, wav_fake_length, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text_padded, text_length, spec_real, spec_real_length, speaker_id)
+		wav_fake, wav_fake_predicted_length, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text, text_length, spec_real, spec_real_length, speaker_id)
 		#wav_fake : torch.Size([64, 1, 8192])　生成された波形
-		#wav_fake_length : torch.Size([64])
+		#wav_fake_predicted_length : torch.Size([64])
 		#attn : torch.Size([64, 1, 400, 181])
 		#ids_slice : torch.Size([64])
 		#x_mask : torch.Size([64, 1, 181])
@@ -235,7 +235,7 @@ for epoch in itertools.count():
 		authenticity_fake, d_feature_map_fake = netD(wav_fake)
 
 		#lossを計算
-		duration_loss = torch.sum(wav_fake_length.float())#duration loss
+		duration_loss = torch.sum(wav_fake_predicted_length.float())#duration loss
 		mel_reconstruction_loss = F.l1_loss(mel_spec_real, mel_spec_fake)*45#reconstruction loss
 		kl_loss = kl_divergence_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
 		feature_matching_loss = feature_loss(d_feature_map_real, d_feature_map_fake)#feature matching loss(Discriminatorの中間層の出力分布の統計量を, realとfakeの場合それぞれにおいて互いの分布間で近づける)

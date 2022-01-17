@@ -167,11 +167,11 @@ class Flow(nn.Module):
             self.flows.append(ResidualCouplingLayer(channels, hidden_channels, kernel_size, dilation_rate, n_layers, gin_channels=gin_channels, mean_only=True))
             self.flows.append(Flip())
 
-    def forward(self, x, x_mask, g=None, reverse=False):
+    def forward(self, x, x_mask, speaker_id_embedded=None, reverse=False):
         if not reverse:
             for flow in self.flows:
-                x, _ = flow(x, x_mask, g=g, reverse=reverse)
+                x, _ = flow(x, x_mask, g=speaker_id_embedded, reverse=reverse)
         else:
             for flow in reversed(self.flows):
-                x = flow(x, x_mask, g=g, reverse=reverse)
+                x = flow(x, x_mask, g=speaker_id_embedded, reverse=reverse)
         return x

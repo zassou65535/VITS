@@ -101,7 +101,7 @@ spec_lengths = torch.tensor([spec.size(2)], dtype=torch.long).to(device)
 source_speaker_id = torch.tensor([source_speaker_id], dtype=torch.long).to(device)
 target_speaker_id = torch.tensor([target_speaker_id], dtype=torch.long).to(device)
 #推論(音声変換)を実行
-output_wav = netG.voice_conversion(spec, spec_lengths, source_speaker_id=source_speaker_id, target_speaker_id=target_speaker_id)[0][0].data.cpu()
+output_wav = netG.voice_conversion(spec, spec_lengths, source_speaker_id=source_speaker_id, target_speaker_id=target_speaker_id)[0].data.cpu()
 #結果と元音声を出力
 torchaudio.save(os.path.join(output_dir, "output.wav"), output_wav, sample_rate=sampling_rate)
 torchaudio.save(os.path.join(output_dir, "input.wav"), loaded_wav, sample_rate=sampling_rate)

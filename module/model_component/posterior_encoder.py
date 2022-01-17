@@ -107,10 +107,10 @@ class PosteriorEncoder(nn.Module):
         self.enc = WN(self.hidden_channels, self.kernel_size, self.dilation_rate, self.n_layers, gin_channels=self.gin_channels)
         self.proj = nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
 
-    def forward(self, spectrogram, spectrogram_lengths, g):
+    def forward(self, spectrogram, spectrogram_lengths, speaker_id_embedded):
         spectrogram_mask = torch.unsqueeze(sequence_mask(spectrogram_lengths, spectrogram.size(2)), 1).to(spectrogram.dtype)
         x = self.pre(spectrogram) * spectrogram_mask
-        x = self.enc(x, spectrogram_mask, g=g)
+        x = self.enc(x, spectrogram_mask, g=speaker_id_embedded)
         stats = self.proj(x) * spectrogram_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
         z = (m + torch.randn_like(m) * torch.exp(logs)) * spectrogram_mask

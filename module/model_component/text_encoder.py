@@ -13,12 +13,6 @@ from torchvision import models,transforms
 from torch.autograd import Function
 import torch.nn.functional as F
 
-def sequence_mask(length, max_length=None):
-    if max_length is None:
-        max_length = length.max()
-    x = torch.arange(max_length, dtype=length.dtype, device=length.device)
-    return x.unsqueeze(0) < length.unsqueeze(1)
-
 def convert_pad_shape(pad_shape):
     l = pad_shape[::-1]
     pad_shape = [item for sublist in l for item in sublist]
@@ -230,14 +224,14 @@ class Encoder(nn.Module):
         self.window_size = window_size
 
         self.drop = nn.Dropout(p_dropout)
-        self.attn_layers = nn.ModuleList()
+        self.attention_layers = nn.ModuleList()
         self.norm_layers_1 = nn.ModuleList()
         self.ffn_layers = nn.ModuleList()
         self.norm_layers_2 = nn.ModuleList()
         for i in range(self.n_layers):
             #print(hidden_channels, hidden_channels, n_heads, p_dropout, window_size) : 
             #192 192 2 0.1 4
-            self.attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, window_size=window_size))
+            self.attention_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, window_size=window_size))
             self.norm_layers_1.append(torch.nn.LayerNorm(hidden_channels))
             #print(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout) :
             #192 192 768 3 0.1
@@ -245,12 +239,13 @@ class Encoder(nn.Module):
             self.norm_layers_2.append(torch.nn.LayerNorm(hidden_channels))
 
     def forward(self, x, x_mask):
+        #x.size() : torch.Size([16, 192, 213])
         #x_mask.size() : torch.Size([64, 1, 145(example)])
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
         #attn_mask.size() : torch.Size([64, 1, 145, 145])
         x = x * x_mask
         for i in range(self.n_layers):
-            y = self.attn_layers[i](x, x, attn_mask)
+            y = self.attention_layers[i](x, x, attn_mask)
             y = self.drop(y)
             x = self.norm_layers_1[i]((x + y).transpose(1, -1)).transpose(1, -1)
 
@@ -287,18 +282,22 @@ class TextEncoder(nn.Module):
 
         self.proj= nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
 
-    def forward(self, x, x_lengths):
-        #x.size(), x_lengths.size() : torch.Size([batch_size, phoneme_length]), torch.Size([batch_size])
-        x = self.emb(x) * math.sqrt(self.hidden_channels) # [b, t, h]
-        #x.size() : torch.Size([batch_size, phoneme_length, self.hidden_channels])
-        x = torch.transpose(x, 1, -1) # [b, h, t]
-        #x.size() : torch.Size([batch_size, self.hidden_channels, phoneme_length])
-        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
-        #x_mask.size() : torch.Size([batch_size, 1, phoneme_length])
+    def forward(self, text_padded, text_lengths):
+        #text_padded.size(), text_lengths.size() : torch.Size([batch_size, text_length]), torch.Size([batch_size])
+        text_padded_embedded = self.emb(text_padded) * math.sqrt(self.hidden_channels)
+        #text_padded_embedded.size() : torch.Size([batch_size, text_length, self.hidden_channels])
+        text_padded_embedded = torch.transpose(text_padded_embedded, 1, -1)
+        #text_padded_embedded.size() : torch.Size([batch_size, self.hidden_channels, text_length])
+        #マスクの作成
+        max_text_length = text_padded_embedded.size(2)
+        progression = torch.arange(max_text_length, dtype=text_lengths.dtype, device=text_lengths.device)
+        text_mask = (progression.unsqueeze(0) < text_lengths.unsqueeze(1))
+        text_mask = torch.unsqueeze(text_mask, 1).to(text_padded_embedded.dtype)
+        #text_mask.size() : torch.Size([batch_size, 1, text_length])
 
-        x = self.encoder(x * x_mask, x_mask)
-        #x.size() : torch.Size([batch_size, self.hidden_channels, phoneme_length])
-        stats = self.proj(x) * x_mask
+        text_encoded = self.encoder(text_padded_embedded * text_mask, text_mask)
+        #text_encoded.size() : torch.Size([batch_size, self.hidden_channels, text_length])
+        stats = self.proj(text_encoded) * text_mask
 
         m, logs = torch.split(stats, self.out_channels, dim=1)
-        return x, m, logs, x_mask
+        return text_encoded, m, logs, text_mask

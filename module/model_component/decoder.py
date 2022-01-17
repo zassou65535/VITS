@@ -96,10 +96,10 @@ class Decoder(torch.nn.Module):
         if gin_channels != 0:
             self.cond = nn.Conv1d(self.gin_channels, self.upsample_initial_channel, 1)
 
-    def forward(self, feature_map, embedded_speaker_id):
+    def forward(self, feature_map, speaker_id_embedded):
         #feature_map.size() : torch.Size([batch_size, 192, 32])
         #feature_map.size() : torch.Size([64, 192, 32])
-        x = self.conv1d_pre(feature_map) + self.cond(embedded_speaker_id)
+        x = self.conv1d_pre(feature_map) + self.cond(speaker_id_embedded)
         #x.size() : torch.Size([64, 512, 32])
 
         for i in range(self.num_upsamples):#4
