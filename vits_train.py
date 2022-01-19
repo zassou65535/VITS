@@ -253,6 +253,8 @@ for epoch in itertools.count():
 		#パラメーターの更新
 		optimizerG.step()
 
+		sys.exit()
+
 		#####stdoutへlossを出力する#####
 		loss_stdout = {
 			"adversarial_loss/D" : adversarial_loss_D.item(),

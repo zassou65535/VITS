@@ -61,7 +61,7 @@ class ResNetBlock(nn.Module):
         return x
 
 class Decoder(torch.nn.Module):
-    def __init__(self, gin_channels):
+    def __init__(self, speaker_id_embedding_dim):
         super(Decoder, self).__init__()
 
         self.initial_channel = 192
@@ -71,7 +71,7 @@ class Decoder(torch.nn.Module):
         self.upsample_rates = [8, 8, 2, 2]
         self.upsample_initial_channel = 512
         self.upsample_kernel_sizes = [16, 16, 4, 4]
-        self.gin_channels = gin_channels
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim
 
         self.num_kernels = len(self.resblock_kernel_sizes) #3
         self.num_upsamples = len(self.upsample_rates) #4
@@ -93,8 +93,7 @@ class Decoder(torch.nn.Module):
         self.conv1d_post = nn.Conv1d(ch, 1, 7, 1, padding=3, bias=False)
         self.ups.apply(init_weights)
 
-        if gin_channels != 0:
-            self.cond = nn.Conv1d(self.gin_channels, self.upsample_initial_channel, 1)
+        self.cond = nn.Conv1d(self.speaker_id_embedding_dim, self.upsample_initial_channel, 1)
 
     def forward(self, feature_map, speaker_id_embedded):
         #feature_map.size() : torch.Size([batch_size, 192, 32])

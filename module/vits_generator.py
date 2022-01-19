@@ -80,68 +80,41 @@ class VitsGenerator(nn.Module):
     self.upsample_kernel_sizes = [16,16,4,4]
     self.segment_size = 32
     self.n_speakers = n_speakers
-    self.gin_channels = 256
+    self.speaker_id_embedding_dim = 256
 
     self.text_encoder = TextEncoder(self.n_vocab)
-    self.decoder = Decoder(gin_channels=self.gin_channels)
-    self.posterior_encoder = PosteriorEncoder(gin_channels=self.gin_channels)
-    self.flow = Flow(self.inter_channels, self.hidden_channels, 5, 1, 4, gin_channels=self.gin_channels)
-    self.stochastic_duration_predictor = StochasticDurationPredictor(self.hidden_channels, 192, 3, 0.5, 4, gin_channels=self.gin_channels)
-    self.speaker_embedding = nn.Embedding(self.n_speakers, self.gin_channels)#話者埋め込み用ネットワーク
+    self.decoder = Decoder(speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+    self.posterior_encoder = PosteriorEncoder(speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+    self.flow = Flow(self.inter_channels, self.hidden_channels, 5, 1, 4, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+    self.stochastic_duration_predictor = StochasticDurationPredictor(self.hidden_channels, 192, 3, 0.5, 4, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+    self.speaker_embedding = nn.Embedding(num_embeddings=self.n_speakers, embedding_dim=self.speaker_id_embedding_dim)#話者埋め込み用ネットワーク
 
   def forward(self, text_padded, text_lengths, spec_padded, spec_lengths, speaker_id):
     #text(音素)の内容をTextEncoderに通す
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)
-    #text_encoded.size() : torch.Size([64, 192, 157(example)])
-    #m_p.size() : torch.Size([64, 192, 157(example)])
-    #logs_p.size() : torch.Size([64, 192, 157(example)])
-    #text_mask.size() : torch.Size([64, 1, 157(example)])
-
-    speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1) # [b, h, 1] #話者埋め込み用ネットワーク
-    #speaker_id_embedded.size() : torch.Size([64, 256, 1])
-
-    #y.size() : torch.Size([64, 513, 400])
-    #spec_lengths.size() : torch.Size([64])
+    #話者埋め込み用ネットワーク
+    speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1)
+    #speaker_id_embeddedを条件として用い、スペクトログラムをencode
     z, m_q, logs_q, spec_mask = self.posterior_encoder(spec_padded, spec_lengths, speaker_id_embedded)
 
-    #z.size() : torch.Size([64, 192, 400])
-    #spec_mask.size() : torch.Size([64, 1, 400])
     z_p = self.flow(z, spec_mask, speaker_id_embedded=speaker_id_embedded)
-    #z_p.size() : torch.Size([64, 192, 400])
 
     with torch.no_grad():
-      # negative cross-entropy
-      #logs_p.size() : torch.Size([64, 192, 157(example)])
-      s_p_sq_r = torch.exp(-2 * logs_p) # [b, d, t]
-      #s_p_sq_r.size() : torch.Size([64, 192, 157(example)])
-      neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True) # [b, 1, t_s]
-      #neg_cent1.size() : torch.Size([64, 1, 157(example)])
-      neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r) # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
-      #neg_cent2.size() : torch.Size([64, 400, 157(example)])
-      neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r)) # [b, t_t, d] x [b, d, t_s] = [b, t_t, t_s]
-      #neg_cent3.size() : torch.Size([64, 400, 157(example)])
-      neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True) # [b, 1, t_s]
-      #neg_cent4.size() : torch.Size([64, 1, 157(example)])
+      s_p_sq_r = torch.exp(-2 * logs_p)
+      neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
+      neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
+      neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
+      neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
       neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
-      #neg_cent.size() : torch.Size([64, 400, 157(example)])
 
-      #text_mask.size() : torch.Size([64, 1, 157(exmaple)])
-      #spec_mask.size() : torch.Size([64, 1, 400])
-      #torch.unsqueeze(text_mask, 2).size() : torch.Size([64, 1, 1, 157(exmaple)])
-      #torch.unsqueeze(spec_mask, -1).size() : torch.Size([64, 1, 400, 1])
       attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
-      #attn_mask.size() : torch.Size([64, 1, 400, 157(exmaple)])
-      #neg_cent.size() : torch.Size([64, 400, 157(example)])
       attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
-    #attn.size() : torch.Size([64, 1, 400, 157])
     w = attn.sum(2)
-    #w.size() : torch.Size([64, 1, 157])
 
     wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, w, g=speaker_id_embedded)
     wav_fake_predicted_length = wav_fake_predicted_length / torch.sum(text_mask)
 
-    # expand prior
     m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
     logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 

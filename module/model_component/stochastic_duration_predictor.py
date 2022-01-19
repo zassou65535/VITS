@@ -323,7 +323,7 @@ class DDSConv(nn.Module):
         return x * x_mask
 
 class StochasticDurationPredictor(nn.Module):
-    def __init__(self, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4, gin_channels=0):
+    def __init__(self, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4, speaker_id_embedding_dim=0):
         super().__init__()
         filter_channels = in_channels # it needs to be removed from future version.
         self.in_channels = in_channels
@@ -331,7 +331,7 @@ class StochasticDurationPredictor(nn.Module):
         self.kernel_size = kernel_size
         self.p_dropout = p_dropout
         self.n_flows = n_flows
-        self.gin_channels = gin_channels
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim
 
         self.log_flow = Log()
         self.flows = nn.ModuleList()
@@ -352,8 +352,7 @@ class StochasticDurationPredictor(nn.Module):
         self.pre = nn.Conv1d(in_channels, filter_channels, 1)
         self.proj = nn.Conv1d(filter_channels, filter_channels, 1)
         self.convs = DDSConv(filter_channels, kernel_size, n_layers=3, p_dropout=p_dropout)
-        if gin_channels != 0:
-            self.cond = nn.Conv1d(gin_channels, filter_channels, 1)
+        self.cond = nn.Conv1d(speaker_id_embedding_dim, filter_channels, 1)
 
     def forward(self, x, x_mask, w=None, g=None, reverse=False, noise_scale=1.0):
         x = torch.detach(x)
