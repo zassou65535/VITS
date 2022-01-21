@@ -323,15 +323,15 @@ class DDSConv(nn.Module):
         return x * x_mask
 
 class StochasticDurationPredictor(nn.Module):
-    def __init__(self, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4, speaker_id_embedding_dim=0):
+    def __init__(self, speaker_id_embedding_dim, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4):
         super().__init__()
-        filter_channels = in_channels # it needs to be removed from future version.
+        filter_channels = in_channels
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim
         self.in_channels = in_channels
         self.filter_channels = filter_channels
         self.kernel_size = kernel_size
         self.p_dropout = p_dropout
         self.n_flows = n_flows
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
 
         self.log_flow = Log()
         self.flows = nn.ModuleList()

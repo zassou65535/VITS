@@ -219,7 +219,7 @@ class Encoder(nn.Module):
         self.filter_channels = filter_channels
         self.n_heads = n_heads
         self.n_layers = n_layers
-        self.kernel_size = kernel_size#3
+        self.kernel_size = kernel_size
         self.p_dropout = p_dropout
         self.window_size = window_size
 
@@ -256,16 +256,25 @@ class Encoder(nn.Module):
         return x
 
 class TextEncoder(nn.Module):
-    def __init__(self, n_vocab):
+    def __init__(self, 
+        n_vocab,
+        out_channels = 192,
+        hidden_channels = 192,
+        filter_channels = 768,
+        n_heads = 2,
+        n_layers = 6,
+        kernel_size = 3,
+        p_dropout = 0.1):
         super().__init__()
+
         self.n_vocab = n_vocab
-        self.out_channels = 192
-        self.hidden_channels = 192
-        self.filter_channels = 768
-        self.n_heads = 2
-        self.n_layers = 6
-        self.kernel_size = 3
-        self.p_dropout = 0.1
+        self.out_channels = out_channels
+        self.hidden_channels = hidden_channels
+        self.filter_channels = filter_channels
+        self.n_heads = n_heads
+        self.n_layers = n_layers
+        self.kernel_size = kernel_size
+        self.p_dropout = p_dropout
 
         self.emb = nn.Embedding(self.n_vocab, self.hidden_channels)
         nn.init.normal_(self.emb.weight, 0.0, self.hidden_channels**-0.5)
@@ -280,7 +289,7 @@ class TextEncoder(nn.Module):
             self.p_dropout
         )
 
-        self.proj= nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
+        self.projection = nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
 
     def forward(self, text_padded, text_lengths):
         #text_padded.size(), text_lengths.size() : torch.Size([batch_size, text_length]), torch.Size([batch_size])
@@ -297,7 +306,7 @@ class TextEncoder(nn.Module):
 
         text_encoded = self.encoder(text_padded_embedded * text_mask, text_mask)
         #text_encoded.size() : torch.Size([batch_size, self.hidden_channels, text_length])
-        stats = self.proj(text_encoded) * text_mask
 
+        stats = self.projection(text_encoded) * text_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
         return text_encoded, m, logs, text_mask

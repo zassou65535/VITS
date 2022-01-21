@@ -43,6 +43,7 @@ class ResidualCouplingLayer(nn.Module):
         self.mean_only = mean_only
 
         self.pre = nn.Conv1d(self.half_channels, hidden_channels, 1)
+        #WNを用いて特徴量の抽出を行う　WNの詳細はwn.py参照
         self.wn = WN(hidden_channels, kernel_size, dilation_rate, n_layers, speaker_id_embedding_dim=speaker_id_embedding_dim)
         self.post = nn.Conv1d(hidden_channels, self.half_channels * (2 - mean_only), 1)
         self.post.weight.data.zero_()
@@ -71,21 +72,22 @@ class ResidualCouplingLayer(nn.Module):
 
 class Flow(nn.Module):
     def __init__(self,
-        channels,
-        hidden_channels,
-        kernel_size,
-        dilation_rate,
-        n_layers,
-        n_flows=4,
-        speaker_id_embedding_dim=0):
+        speaker_id_embedding_dim=256,
+        channels=192,
+        hidden_channels=192,
+        kernel_size=5,
+        dilation_rate=1,
+        n_layers=4,
+        n_flows=4):
         super().__init__()
+
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim
         self.channels = channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
         self.dilation_rate = dilation_rate
         self.n_layers = n_layers
         self.n_flows = n_flows
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
 
         self.flows = nn.ModuleList()
         for i in range(n_flows):

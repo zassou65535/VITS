@@ -63,8 +63,8 @@ def generate_path(duration, mask):
 class VitsGenerator(nn.Module):
   def __init__(self, n_vocab, n_speakers):
     super().__init__()
-    self.n_vocab = n_vocab
-    self.spec_channels = 513
+    self.n_vocab = n_vocab#音素の種類数
+    self.spec_channels = 513#線形スペクトログラムの縦軸(周波数)の次元
     self.inter_channels = 192
     self.hidden_channels = 192
     self.filter_channels = 768
@@ -80,13 +80,54 @@ class VitsGenerator(nn.Module):
     self.upsample_kernel_sizes = [16,16,4,4]
     self.segment_size = 32
     self.n_speakers = n_speakers
-    self.speaker_id_embedding_dim = 256
+    self.speaker_id_embedding_dim = 256#話者idの埋め込み先のベクトルの大きさ
 
-    self.text_encoder = TextEncoder(self.n_vocab)
-    self.decoder = Decoder(speaker_id_embedding_dim=self.speaker_id_embedding_dim)
-    self.posterior_encoder = PosteriorEncoder(speaker_id_embedding_dim=self.speaker_id_embedding_dim)
-    self.flow = Flow(self.inter_channels, self.hidden_channels, 5, 1, 4, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
-    self.stochastic_duration_predictor = StochasticDurationPredictor(self.hidden_channels, 192, 3, 0.5, 4, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+    self.text_encoder = TextEncoder(
+                      n_vocab=self.n_vocab,#音素の種類数
+                      out_channels=self.inter_channels,
+                      hidden_channels=self.hidden_channels,
+                      filter_channels=self.filter_channels,
+                      n_heads=self.n_heads,
+                      n_layers=self.n_layers,
+                      kernel_size=self.kernel_size,
+                      p_dropout=self.p_dropout
+                    )
+    self.decoder = Decoder(
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+                      initial_channel=self.inter_channels,
+                      resblock = self.resblock,
+                      resblock_kernel_sizes = self.resblock_kernel_sizes,
+                      resblock_dilation_sizes = self.resblock_dilation_sizes,
+                      upsample_rates = self.upsample_rates,
+                      upsample_initial_channel = self.upsample_initial_channel,
+                      upsample_kernel_sizes = self.upsample_kernel_sizes
+                    )
+    self.posterior_encoder = PosteriorEncoder(
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,
+                      in_channels = self.spec_channels,
+                      out_channels = self.inter_channels,
+                      hidden_channels = self.hidden_channels,
+                      kernel_size = 5,
+                      dilation_rate = 1,
+                      n_layers = 16
+                    )
+    self.flow = Flow(
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+                      channels=self.inter_channels,
+                      hidden_channels=self.hidden_channels,
+                      kernel_size=5,
+                      dilation_rate=1,
+                      n_layers=4,
+                      n_flows=4
+                    )
+    self.stochastic_duration_predictor = StochasticDurationPredictor(
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,
+                      in_channels=self.hidden_channels,
+                      filter_channels=192,
+                      kernel_size=3,
+                      p_dropout=0.5,
+                      n_flows=4
+                    )
     self.speaker_embedding = nn.Embedding(num_embeddings=self.n_speakers, embedding_dim=self.speaker_id_embedding_dim)#話者埋め込み用ネットワーク
 
   def forward(self, text_padded, text_lengths, spec_padded, spec_lengths, speaker_id):

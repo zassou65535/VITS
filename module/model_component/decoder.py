@@ -61,17 +61,25 @@ class ResNetBlock(nn.Module):
         return x
 
 class Decoder(torch.nn.Module):
-    def __init__(self, speaker_id_embedding_dim):
+    def __init__(self,
+        speaker_id_embedding_dim,
+        initial_channel = 192,
+        resblock = 1,
+        resblock_kernel_sizes = [3, 7, 11] ,
+        resblock_dilation_sizes = [[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        upsample_rates = [8, 8, 2, 2],
+        upsample_initial_channel = 512,
+        upsample_kernel_sizes = [16, 16, 4, 4]):
         super(Decoder, self).__init__()
 
-        self.initial_channel = 192
-        self.resblock = 1
-        self.resblock_kernel_sizes = [3, 7, 11] 
-        self.resblock_dilation_sizes = [[1, 3, 5], [1, 3, 5], [1, 3, 5]]
-        self.upsample_rates = [8, 8, 2, 2]
-        self.upsample_initial_channel = 512
-        self.upsample_kernel_sizes = [16, 16, 4, 4]
         self.speaker_id_embedding_dim = speaker_id_embedding_dim
+        self.initial_channel = initial_channel
+        self.resblock = resblock
+        self.resblock_kernel_sizes = resblock_kernel_sizes
+        self.resblock_dilation_sizes = resblock_dilation_sizes
+        self.upsample_rates = upsample_rates
+        self.upsample_initial_channel = upsample_initial_channel
+        self.upsample_kernel_sizes = upsample_kernel_sizes
 
         self.num_kernels = len(self.resblock_kernel_sizes) #3
         self.num_upsamples = len(self.upsample_rates) #4

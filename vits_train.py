@@ -244,6 +244,8 @@ for epoch in itertools.count():
 		#Generatorのlossの総計
 		lossG = duration_loss + mel_reconstruction_loss + kl_loss + feature_matching_loss + adversarial_loss_G
 
+		sys.exit()
+
 		#勾配をリセット
 		optimizerG.zero_grad()
 		#勾配を計算

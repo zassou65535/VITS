@@ -16,15 +16,24 @@ from .wn import WN
 
 #linear spectrogramを入力にとりEncodeを実行するモデル
 class PosteriorEncoder(nn.Module):
-    def __init__(self, speaker_id_embedding_dim):
+    def __init__(self,
+        speaker_id_embedding_dim,
+        in_channels = 513,
+        out_channels = 192,
+        hidden_channels = 192,
+        kernel_size = 5,
+        dilation_rate = 1,
+        n_layers = 16,
+        ):
         super(PosteriorEncoder, self).__init__()
-        self.in_channels = 513
-        self.out_channels = 192
-        self.hidden_channels = 192
-        self.kernel_size = 5
-        self.dilation_rate = 1
-        self.n_layers = 16
+
         self.speaker_id_embedding_dim = speaker_id_embedding_dim
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.hidden_channels = hidden_channels
+        self.kernel_size = kernel_size
+        self.dilation_rate = dilation_rate
+        self.n_layers = n_layers
 
         #入力スペクトログラムに対し前処理を行うネットワーク
         self.preprocess = nn.Conv1d(self.in_channels, self.hidden_channels, 1)
