@@ -74,6 +74,7 @@ class VitsGenerator(nn.Module):
     self.n_speakers = n_speakers#話者の種類数
     self.speaker_id_embedding_dim = 256#話者idの埋め込み先のベクトルの大きさ
 
+    #transformerに似た構造のモジュールを用い、音素の列をencodeするネットワーク
     self.text_encoder = TextEncoder(
                       n_phoneme=self.n_phoneme,#音素の種類数
                       phoneme_embedding_dim=self.phoneme_embedding_dim,#各音素の埋め込み先のベクトルの大きさ
@@ -87,17 +88,20 @@ class VitsGenerator(nn.Module):
                       embedding_dim=self.speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
                     )
 
-    #z, speaker_id_embeddedを入力にとり音声を生成するネットワーク
-    self.decoder = Decoder(
-                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
-                      in_z_channel=self.z_channels#入力するzのchannel数
-                    )
+    #linear spectrogramを入力にとりEncodeを実行、zを出力するモデル
     self.posterior_encoder = PosteriorEncoder(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_spec_channels = self.spec_channels,#入力する線形スペクトログラムの縦軸(周波数)の次元
                       out_z_channels = self.z_channels,#PosteriorEncoderから出力されるzのchannel数
                       phoneme_embedding_dim = self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                     )
+
+    #z, speaker_id_embeddedを入力にとり音声を生成するネットワーク
+    self.decoder = Decoder(
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+                      in_z_channel=self.z_channels#入力するzのchannel数
+                    )
+
     self.flow = Flow(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       channels=self.z_channels,
@@ -107,6 +111,7 @@ class VitsGenerator(nn.Module):
                       n_layers=4,
                       n_flows=4
                     )
+                    
     self.stochastic_duration_predictor = StochasticDurationPredictor(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ

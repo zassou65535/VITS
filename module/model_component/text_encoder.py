@@ -255,6 +255,7 @@ class Encoder(nn.Module):
         x = x * x_mask
         return x
 
+#transformerに似た構造のモジュールを用い、音素の列をencodeする
 class TextEncoder(nn.Module):
     def __init__(self, 
         n_phoneme,#音素の種類数
@@ -269,12 +270,12 @@ class TextEncoder(nn.Module):
 
         self.n_phoneme = n_phoneme#音素の種類数
         self.phoneme_embedding_dim = phoneme_embedding_dim#各音素の埋め込み先のベクトルの大きさ
-        self.out_channels = out_channels
-        self.n_heads = n_heads
-        self.n_layers = n_layers
-        self.kernel_size = kernel_size
-        self.filter_channels = filter_channels
-        self.p_dropout = p_dropout
+        self.out_channels = out_channels#出力するmとlogsの次元数
+        self.n_heads = n_heads#self.encoder内の、transformerに似た構造のモジュールで使われている、MultiHeadAttentionのhead数
+        self.n_layers = n_layers#self.encoder内の、transformerに似た構造のモジュールをいくつ重ねるか
+        self.kernel_size = kernel_size#self.encoder内の、transformerに似た構造のモジュールにあるFeedForwardNetworkのカーネルサイズ
+        self.filter_channels = filter_channels#self.encoder内の、transformerに似た構造のモジュールにあるFeedForwardNetworkの隠れ層のチャネル数
+        self.p_dropout = p_dropout#self.encoderの学習時に適用するドロップアウトの比率
 
         self.emb = nn.Embedding(self.n_phoneme, self.phoneme_embedding_dim)
         nn.init.normal_(self.emb.weight, 0.0, self.phoneme_embedding_dim**-0.5)
@@ -292,20 +293,15 @@ class TextEncoder(nn.Module):
         self.projection = nn.Conv1d(self.phoneme_embedding_dim, self.out_channels * 2, 1)
 
     def forward(self, text_padded, text_lengths):
-        #text_padded.size(), text_lengths.size() : torch.Size([batch_size, text_length]), torch.Size([batch_size])
         text_padded_embedded = self.emb(text_padded) * math.sqrt(self.phoneme_embedding_dim)
-        #text_padded_embedded.size() : torch.Size([batch_size, text_length, self.phoneme_embedding_dim])
         text_padded_embedded = torch.transpose(text_padded_embedded, 1, -1)
-        #text_padded_embedded.size() : torch.Size([batch_size, self.phoneme_embedding_dim, text_length])
         #マスクの作成
         max_text_length = text_padded_embedded.size(2)
         progression = torch.arange(max_text_length, dtype=text_lengths.dtype, device=text_lengths.device)
         text_mask = (progression.unsqueeze(0) < text_lengths.unsqueeze(1))
         text_mask = torch.unsqueeze(text_mask, 1).to(text_padded_embedded.dtype)
-        #text_mask.size() : torch.Size([batch_size, 1, text_length])
 
         text_encoded = self.encoder(text_padded_embedded * text_mask, text_mask)
-        #text_encoded.size() : torch.Size([batch_size, self.phoneme_embedding_dim, text_length])
 
         stats = self.projection(text_encoded) * text_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)
