@@ -34,7 +34,7 @@ class ResidualCouplingLayer(nn.Module):
         mean_only=False):
         assert channels % 2 == 0, "channels should be divisible by 2"
         super().__init__()
-        self.channels = channels
+        self.in_z_channels = channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
         self.dilation_rate = dilation_rate
@@ -70,20 +70,21 @@ class ResidualCouplingLayer(nn.Module):
             x = torch.cat([x0, x1], 1)
             return x
 
+#zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力するネットワーク
 class Flow(nn.Module):
     def __init__(self,
-        speaker_id_embedding_dim=256,
-        channels=192,
-        hidden_channels=192,
+        speaker_id_embedding_dim=256,#話者idの埋め込み先のベクトルの大きさ
+        in_z_channels=192,#入力するzのchannel数
+        phoneme_embedding_dim=192,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
         kernel_size=5,
         dilation_rate=1,
         n_layers=4,
         n_flows=4):
         super().__init__()
 
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
-        self.channels = channels
-        self.hidden_channels = hidden_channels
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
+        self.in_z_channels = in_z_channels#入力するzのchannel数
+        self.phoneme_embedding_dim = phoneme_embedding_dim#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
         self.kernel_size = kernel_size
         self.dilation_rate = dilation_rate
         self.n_layers = n_layers
@@ -91,14 +92,18 @@ class Flow(nn.Module):
 
         self.flows = nn.ModuleList()
         for i in range(n_flows):
-            self.flows.append(ResidualCouplingLayer(channels, hidden_channels, kernel_size, dilation_rate, n_layers, speaker_id_embedding_dim=speaker_id_embedding_dim, mean_only=True))
+            self.flows.append(ResidualCouplingLayer(self.in_z_channels, self.phoneme_embedding_dim, self.kernel_size, self.dilation_rate, self.n_layers, speaker_id_embedding_dim=self.speaker_id_embedding_dim, mean_only=True))
             self.flows.append(Flip())
 
-    def forward(self, x, x_mask, speaker_id_embedded=None, reverse=False):
+    def forward(self, z, z_mask, speaker_id_embedded, reverse=False):
+        z_p = z
+        z_p_mask = z_mask
+        #順方向
         if not reverse:
             for flow in self.flows:
-                x, _ = flow(x, x_mask, speaker_id_embedded=speaker_id_embedded, reverse=reverse)
+                z_p, _ = flow(z_p, z_p_mask, speaker_id_embedded=speaker_id_embedded, reverse=reverse)
+        #逆方向
         else:
             for flow in reversed(self.flows):
-                x = flow(x, x_mask, speaker_id_embedded=speaker_id_embedded, reverse=reverse)
-        return x
+                z_p = flow(z_p, z_p_mask, speaker_id_embedded=speaker_id_embedded, reverse=reverse)
+        return z_p

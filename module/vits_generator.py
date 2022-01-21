@@ -88,7 +88,7 @@ class VitsGenerator(nn.Module):
                       embedding_dim=self.speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
                     )
 
-    #linear spectrogramを入力にとりEncodeを実行、zを出力するモデル
+    #linear spectrogramと埋め込み済み話者idを入力にとりEncodeを実行、zを出力するモデル
     self.posterior_encoder = PosteriorEncoder(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_spec_channels = self.spec_channels,#入力する線形スペクトログラムの縦軸(周波数)の次元
@@ -101,17 +101,19 @@ class VitsGenerator(nn.Module):
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_z_channel=self.z_channels#入力するzのchannel数
                     )
-
+    
+    #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力するネットワーク
+    #音声変換時は、話者間の変換を実行する役割を果たす
     self.flow = Flow(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
-                      channels=self.z_channels,
-                      hidden_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
+                      in_z_channels=self.z_channels,#入力するzのchannel数
+                      phoneme_embedding_dim=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                       kernel_size=5,
                       dilation_rate=1,
                       n_layers=4,
                       n_flows=4
                     )
-                    
+
     self.stochastic_duration_predictor = StochasticDurationPredictor(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
@@ -124,23 +126,24 @@ class VitsGenerator(nn.Module):
   def forward(self, text_padded, text_lengths, spec_padded, spec_lengths, speaker_id):
     #text(音素)の内容をTextEncoderに通す
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)
-    #話者埋め込み用ネットワーク
-    speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1)
-    #speaker_id_embeddedを条件として用い、スペクトログラムをencode
-    z, m_q, logs_q, spec_mask = self.posterior_encoder(spec_padded, spec_lengths, speaker_id_embedded)
 
+    #話者id埋め込み用ネットワーク
+    speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1)
+    #linear spectrogramと埋め込み済み話者idを入力にとりEncodeを実行、zを出力する
+    z, m_q, logs_q, spec_mask = self.posterior_encoder(spec_padded, spec_lengths, speaker_id_embedded)
+    #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力する
     z_p = self.flow(z, spec_mask, speaker_id_embedded=speaker_id_embedded)
 
     with torch.no_grad():
-      s_p_sq_r = torch.exp(-2 * logs_p)
-      neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
-      neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
-      neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
-      neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
-      neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
+        s_p_sq_r = torch.exp(-2 * logs_p)
+        neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
+        neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
+        neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
+        neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
+        neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
 
-      attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
-      attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
+        attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
+        attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
     w = attn.sum(2)
 
