@@ -14,33 +14,33 @@ import torch.nn.functional as F
 
 from .wn import WN
 
-#linear spectrogramを入力にとりEncodeを実行するモデル
+#linear spectrogramを入力にとりEncodeを実行、zを出力するモデル
 class PosteriorEncoder(nn.Module):
     def __init__(self,
-        speaker_id_embedding_dim,
-        in_channels = 513,
-        out_channels = 192,
-        hidden_channels = 192,
-        kernel_size = 5,
-        dilation_rate = 1,
-        n_layers = 16,
+        speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+        in_spec_channels = 513,#入力する線形スペクトログラムの縦軸(周波数)の次元
+        out_z_channels = 192,#出力するzのchannel数
+        phoneme_embedding_dim = 192,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
+        kernel_size = 5,#WN内のconv1dのカーネルサイズ
+        dilation_rate = 1,#WN内のconv1dのdilationを決めるための数値
+        n_layers = 16,#WN内で、ResidualBlockをいくつ重ねるか
         ):
         super(PosteriorEncoder, self).__init__()
 
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.hidden_channels = hidden_channels
-        self.kernel_size = kernel_size
-        self.dilation_rate = dilation_rate
-        self.n_layers = n_layers
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
+        self.in_spec_channels = in_spec_channels#入力する線形スペクトログラムの縦軸(周波数)の次元
+        self.out_z_channels = out_z_channels#出力するzのchannel数
+        self.phoneme_embedding_dim = phoneme_embedding_dim#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
+        self.kernel_size = kernel_size#WN内のconv1dのカーネルサイズ
+        self.dilation_rate = dilation_rate#WN内のconv1dのdilationを決めるための数値
+        self.n_layers = n_layers#WN内で、ResidualBlockをいくつ重ねるか
 
         #入力スペクトログラムに対し前処理を行うネットワーク
-        self.preprocess = nn.Conv1d(self.in_channels, self.hidden_channels, 1)
+        self.preprocess = nn.Conv1d(self.in_spec_channels, self.phoneme_embedding_dim, 1)
         #WNを用いて特徴量の抽出を行う　WNの詳細はwn.py参照
-        self.wn = WN(self.hidden_channels, self.kernel_size, self.dilation_rate, self.n_layers, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+        self.wn = WN(self.phoneme_embedding_dim, self.kernel_size, self.dilation_rate, self.n_layers, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
         #ガウス分布の平均と分散を生成するネットワーク
-        self.projection = nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
+        self.projection = nn.Conv1d(self.phoneme_embedding_dim, self.out_z_channels * 2, 1)
 
     def forward(self, spectrogram, spectrogram_lengths, speaker_id_embedded):
         #maskの生成
@@ -54,7 +54,7 @@ class PosteriorEncoder(nn.Module):
         x = self.wn(x, spectrogram_mask, speaker_id_embedded=speaker_id_embedded)
         #出力された特徴マップをもとに統計量を生成
         statistics = self.projection(x) * spectrogram_mask
-        gauss_mean, gauss_log_variance = torch.split(statistics, self.out_channels, dim=1)
+        gauss_mean, gauss_log_variance = torch.split(statistics, self.out_z_channels, dim=1)
         #平均gauss_mean, 分散exp(gauss_log_variance)の正規分布から値をサンプリング
         z = (gauss_mean + torch.randn_like(gauss_mean) * torch.exp(gauss_log_variance)) * spectrogram_mask
         return z, gauss_mean, gauss_log_variance, spectrogram_mask

@@ -71,7 +71,7 @@ device = torch.device(device if torch.cuda.is_available() else "cpu")
 print("device:",device)
 
 #Generatorのインスタンスを生成
-netG = VitsGenerator(n_vocab=n_phoneme, n_speakers=n_speakers)
+netG = VitsGenerator(n_phoneme=n_phoneme, n_speakers=n_speakers)
 #学習済みパラメーターを読み込む
 netG.load_state_dict(torch.load(trained_weight_path))
 #ネットワークをデバイスに移動

@@ -213,9 +213,9 @@ class FeedForwardNetwork(nn.Module):
 
 #Transformerに似た、AttentionとFeedForwardNetworkからなるEncoder
 class Encoder(nn.Module):
-    def __init__(self, hidden_channels, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0., window_size=4, **kwargs):
+    def __init__(self, phoneme_embedding_dim, filter_channels, n_heads, n_layers, kernel_size=1, p_dropout=0., window_size=4, **kwargs):
         super().__init__()
-        self.hidden_channels = hidden_channels
+        self.phoneme_embedding_dim = phoneme_embedding_dim
         self.filter_channels = filter_channels
         self.n_heads = n_heads
         self.n_layers = n_layers
@@ -229,14 +229,14 @@ class Encoder(nn.Module):
         self.ffn_layers = nn.ModuleList()
         self.norm_layers_2 = nn.ModuleList()
         for i in range(self.n_layers):
-            #print(hidden_channels, hidden_channels, n_heads, p_dropout, window_size) : 
+            #print(phoneme_embedding_dim, phoneme_embedding_dim, n_heads, p_dropout, window_size) : 
             #192 192 2 0.1 4
-            self.attention_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout, window_size=window_size))
-            self.norm_layers_1.append(torch.nn.LayerNorm(hidden_channels))
-            #print(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout) :
+            self.attention_layers.append(MultiHeadAttention(phoneme_embedding_dim, phoneme_embedding_dim, n_heads, p_dropout=p_dropout, window_size=window_size))
+            self.norm_layers_1.append(torch.nn.LayerNorm(phoneme_embedding_dim))
+            #print(phoneme_embedding_dim, phoneme_embedding_dim, filter_channels, kernel_size, p_dropout) :
             #192 192 768 3 0.1
-            self.ffn_layers.append(FeedForwardNetwork(hidden_channels, hidden_channels, filter_channels, kernel_size, p_dropout=p_dropout))
-            self.norm_layers_2.append(torch.nn.LayerNorm(hidden_channels))
+            self.ffn_layers.append(FeedForwardNetwork(phoneme_embedding_dim, phoneme_embedding_dim, filter_channels, kernel_size, p_dropout=p_dropout))
+            self.norm_layers_2.append(torch.nn.LayerNorm(phoneme_embedding_dim))
 
     def forward(self, x, x_mask):
         #x.size() : torch.Size([16, 192, 213])
@@ -257,31 +257,31 @@ class Encoder(nn.Module):
 
 class TextEncoder(nn.Module):
     def __init__(self, 
-        n_vocab,
-        out_channels = 192,
-        hidden_channels = 192,
-        filter_channels = 768,
-        n_heads = 2,
-        n_layers = 6,
-        kernel_size = 3,
-        p_dropout = 0.1):
+        n_phoneme,#音素の種類数
+        phoneme_embedding_dim = 192,#各音素の埋め込み先のベクトルの大きさ
+        out_channels = 192,#出力するmとlogsの次元数
+        n_heads = 2,#self.encoder内の、transformerに似た構造のモジュールで使われている、MultiHeadAttentionのhead数
+        n_layers = 6,#self.encoder内の、transformerに似た構造のモジュールをいくつ重ねるか
+        kernel_size = 3,#self.encoder内の、transformerに似た構造のモジュールにあるFeedForwardNetworkのカーネルサイズ
+        filter_channels = 768,#self.encoder内の、transformerに似た構造のモジュールにあるFeedForwardNetworkの隠れ層のチャネル数
+        p_dropout = 0.1):#self.encoderの学習時に適用するドロップアウトの比率
         super().__init__()
 
-        self.n_vocab = n_vocab
+        self.n_phoneme = n_phoneme#音素の種類数
+        self.phoneme_embedding_dim = phoneme_embedding_dim#各音素の埋め込み先のベクトルの大きさ
         self.out_channels = out_channels
-        self.hidden_channels = hidden_channels
-        self.filter_channels = filter_channels
         self.n_heads = n_heads
         self.n_layers = n_layers
         self.kernel_size = kernel_size
+        self.filter_channels = filter_channels
         self.p_dropout = p_dropout
 
-        self.emb = nn.Embedding(self.n_vocab, self.hidden_channels)
-        nn.init.normal_(self.emb.weight, 0.0, self.hidden_channels**-0.5)
+        self.emb = nn.Embedding(self.n_phoneme, self.phoneme_embedding_dim)
+        nn.init.normal_(self.emb.weight, 0.0, self.phoneme_embedding_dim**-0.5)
 
         #Transformerに似た、AttentionとFeedForwardNetworkからなるEncoder
         self.encoder = Encoder(
-            self.hidden_channels,
+            self.phoneme_embedding_dim,
             self.filter_channels,
             self.n_heads,
             self.n_layers,
@@ -289,14 +289,14 @@ class TextEncoder(nn.Module):
             self.p_dropout
         )
 
-        self.projection = nn.Conv1d(self.hidden_channels, self.out_channels * 2, 1)
+        self.projection = nn.Conv1d(self.phoneme_embedding_dim, self.out_channels * 2, 1)
 
     def forward(self, text_padded, text_lengths):
         #text_padded.size(), text_lengths.size() : torch.Size([batch_size, text_length]), torch.Size([batch_size])
-        text_padded_embedded = self.emb(text_padded) * math.sqrt(self.hidden_channels)
-        #text_padded_embedded.size() : torch.Size([batch_size, text_length, self.hidden_channels])
+        text_padded_embedded = self.emb(text_padded) * math.sqrt(self.phoneme_embedding_dim)
+        #text_padded_embedded.size() : torch.Size([batch_size, text_length, self.phoneme_embedding_dim])
         text_padded_embedded = torch.transpose(text_padded_embedded, 1, -1)
-        #text_padded_embedded.size() : torch.Size([batch_size, self.hidden_channels, text_length])
+        #text_padded_embedded.size() : torch.Size([batch_size, self.phoneme_embedding_dim, text_length])
         #マスクの作成
         max_text_length = text_padded_embedded.size(2)
         progression = torch.arange(max_text_length, dtype=text_lengths.dtype, device=text_lengths.device)
@@ -305,7 +305,7 @@ class TextEncoder(nn.Module):
         #text_mask.size() : torch.Size([batch_size, 1, text_length])
 
         text_encoded = self.encoder(text_padded_embedded * text_mask, text_mask)
-        #text_encoded.size() : torch.Size([batch_size, self.hidden_channels, text_length])
+        #text_encoded.size() : torch.Size([batch_size, self.phoneme_embedding_dim, text_length])
 
         stats = self.projection(text_encoded) * text_mask
         m, logs = torch.split(stats, self.out_channels, dim=1)

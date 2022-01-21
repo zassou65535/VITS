@@ -28,11 +28,12 @@ class WN(nn.Module):
         super(WN, self).__init__()
         assert(kernel_size % 2 == 1)
         self.hidden_channels = hidden_channels
-        self.kernel_size = kernel_size,
-        self.dilation_rate = dilation_rate
-        self.n_layers = n_layers
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
+        self.kernel_size = kernel_size,#ResidualBlock内のConv1dのカーネルサイズ
+        self.dilation_rate = dilation_rate#ResidualBlock内のConv1dのdilationを決めるための数値
+        self.n_layers = n_layers#ResidualBlockをいくつ重ねるか
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
 
+        #n_layers個あるResidualBlockの構成要素を保持するModuleList
         self.in_layers = nn.ModuleList()
         self.res_skip_layers = nn.ModuleList()
 
@@ -40,6 +41,7 @@ class WN(nn.Module):
         condition_layer = nn.Conv1d(speaker_id_embedding_dim, 2*hidden_channels*n_layers, 1)
         self.condition_layer = nn.utils.weight_norm(condition_layer, name='weight')
 
+        #ResidualBlockをn_layers個生成
         for i in range(n_layers):
             #in_layerに畳み込み層を追加
             dilation = dilation_rate ** i
@@ -63,6 +65,7 @@ class WN(nn.Module):
         #embed済み話者idを入力にとり、条件付けを行うための特徴量を出力するネットワークを適用
         speaker_fmap = self.condition_layer(speaker_id_embedded)
 
+        #n_layers個のResidualBlockに通す
         for i in range(self.n_layers):
             x_in = self.in_layers[i](x)
             #speaker_fmapから特徴量を選択

@@ -61,74 +61,60 @@ def generate_path(duration, mask):
 
 #モデルの学習を行うためのクラス
 class VitsGenerator(nn.Module):
-  def __init__(self, n_vocab, n_speakers):
+  def __init__(self, n_phoneme, n_speakers):
     super().__init__()
-    self.n_vocab = n_vocab#音素の種類数
-    self.spec_channels = 513#線形スペクトログラムの縦軸(周波数)の次元
-    self.inter_channels = 192
-    self.hidden_channels = 192
-    self.filter_channels = 768
-    self.n_heads = 2
-    self.n_layers = 6
-    self.kernel_size = 3
-    self.p_dropout = 0.1
-    self.resblock = 1
+    self.n_phoneme = n_phoneme#入力する音素の種類数
+    self.phoneme_embedding_dim = 192#各音素の埋め込み先のベクトルの大きさ
+    self.spec_channels = 513#入力する線形スペクトログラムの縦軸(周波数)の次元
+    self.z_channels = 192#PosteriorEncoderから出力されるzのchannel数
+    self.text_encoders_dropout_during_train = 0.1#学習時のtext_encoderのdropoutの割合
     self.resblock_kernel_sizes = [3,7,11]
     self.resblock_dilation_sizes = [[1,3,5], [1,3,5], [1,3,5]]
-    self.upsample_rates = [8,8,2,2]
-    self.upsample_initial_channel = 512
-    self.upsample_kernel_sizes = [16,16,4,4]
     self.segment_size = 32
-    self.n_speakers = n_speakers
+    self.n_speakers = n_speakers#話者の種類数
     self.speaker_id_embedding_dim = 256#話者idの埋め込み先のベクトルの大きさ
 
     self.text_encoder = TextEncoder(
-                      n_vocab=self.n_vocab,#音素の種類数
-                      out_channels=self.inter_channels,
-                      hidden_channels=self.hidden_channels,
-                      filter_channels=self.filter_channels,
-                      n_heads=self.n_heads,
-                      n_layers=self.n_layers,
-                      kernel_size=self.kernel_size,
-                      p_dropout=self.p_dropout
+                      n_phoneme=self.n_phoneme,#音素の種類数
+                      phoneme_embedding_dim=self.phoneme_embedding_dim,#各音素の埋め込み先のベクトルの大きさ
+                      out_channels=self.z_channels,#出力するmとlogsのchannel数
+                      p_dropout=self.text_encoders_dropout_during_train#学習時のdropoutの割合
                     )
+
+    #話者埋め込み用ネットワーク
+    self.speaker_embedding = nn.Embedding(
+                      num_embeddings=self.n_speakers,#話者の種類数
+                      embedding_dim=self.speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
+                    )
+
+    #z, speaker_id_embeddedを入力にとり音声を生成するネットワーク
     self.decoder = Decoder(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
-                      initial_channel=self.inter_channels,
-                      resblock = self.resblock,
-                      resblock_kernel_sizes = self.resblock_kernel_sizes,
-                      resblock_dilation_sizes = self.resblock_dilation_sizes,
-                      upsample_rates = self.upsample_rates,
-                      upsample_initial_channel = self.upsample_initial_channel,
-                      upsample_kernel_sizes = self.upsample_kernel_sizes
+                      in_z_channel=self.z_channels#入力するzのchannel数
                     )
     self.posterior_encoder = PosteriorEncoder(
-                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,
-                      in_channels = self.spec_channels,
-                      out_channels = self.inter_channels,
-                      hidden_channels = self.hidden_channels,
-                      kernel_size = 5,
-                      dilation_rate = 1,
-                      n_layers = 16
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+                      in_spec_channels = self.spec_channels,#入力する線形スペクトログラムの縦軸(周波数)の次元
+                      out_z_channels = self.z_channels,#PosteriorEncoderから出力されるzのchannel数
+                      phoneme_embedding_dim = self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                     )
     self.flow = Flow(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
-                      channels=self.inter_channels,
-                      hidden_channels=self.hidden_channels,
+                      channels=self.z_channels,
+                      hidden_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                       kernel_size=5,
                       dilation_rate=1,
                       n_layers=4,
                       n_flows=4
                     )
     self.stochastic_duration_predictor = StochasticDurationPredictor(
-                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,
-                      in_channels=self.hidden_channels,
+                      speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+                      in_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                       filter_channels=192,
                       kernel_size=3,
                       p_dropout=0.5,
                       n_flows=4
                     )
-    self.speaker_embedding = nn.Embedding(num_embeddings=self.n_speakers, embedding_dim=self.speaker_id_embedding_dim)#話者埋め込み用ネットワーク
 
   def forward(self, text_padded, text_lengths, spec_padded, spec_lengths, speaker_id):
     #text(音素)の内容をTextEncoderに通す
