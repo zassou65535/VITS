@@ -24,33 +24,33 @@ def gated_activation_unit(input_a, input_b, n_channels):
 #音声を生成するモデル"WaveGlow"(https://arxiv.org/pdf/1811.00002.pdf)でWNという名前で言及されているモジュール
 #PosteriorEncoderやFlow内で特徴量の抽出にこのネットワークを用いる
 class WN(nn.Module):
-    def __init__(self, hidden_channels, kernel_size, dilation_rate, n_layers, speaker_id_embedding_dim):
+    def __init__(self, hidden_channels, kernel_size, dilation_rate, n_resblocks, speaker_id_embedding_dim):
         super(WN, self).__init__()
         assert(kernel_size % 2 == 1)
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size,#ResidualBlock内のConv1dのカーネルサイズ
         self.dilation_rate = dilation_rate#ResidualBlock内のConv1dのdilationを決めるための数値
-        self.n_layers = n_layers#ResidualBlockをいくつ重ねるか
+        self.n_resblocks = n_resblocks#ResidualBlockをいくつ重ねるか
         self.speaker_id_embedding_dim = speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
 
-        #n_layers個あるResidualBlockの構成要素を保持するModuleList
-        self.in_layers = nn.ModuleList()
+        #n_resblocks個あるResidualBlockの構成要素を保持するModuleList
+        self.in_resblocks = nn.ModuleList()
         self.res_skip_layers = nn.ModuleList()
 
         #embed済み話者idを入力にとり、条件付けを行うための特徴量を出力するネットワーク
-        condition_layer = nn.Conv1d(speaker_id_embedding_dim, 2*hidden_channels*n_layers, 1)
+        condition_layer = nn.Conv1d(speaker_id_embedding_dim, 2*hidden_channels*n_resblocks, 1)
         self.condition_layer = nn.utils.weight_norm(condition_layer, name='weight')
 
-        #ResidualBlockをn_layers個生成
-        for i in range(n_layers):
+        #ResidualBlockをn_resblocks個生成
+        for i in range(n_resblocks):
             #in_layerに畳み込み層を追加
             dilation = dilation_rate ** i
             padding = int((kernel_size * dilation - dilation) / 2)
             in_layer = nn.Conv1d(hidden_channels, 2*hidden_channels, kernel_size, dilation=dilation, padding=padding)
             in_layer = nn.utils.weight_norm(in_layer, name='weight')
-            self.in_layers.append(in_layer)
+            self.in_resblocks.append(in_layer)
             #res_skip_layerに畳み込み層を追加
-            if i < n_layers - 1:
+            if i < n_resblocks - 1:
                 res_skip_channels = 2 * hidden_channels
             else:
                 res_skip_channels = hidden_channels
@@ -65,9 +65,9 @@ class WN(nn.Module):
         #embed済み話者idを入力にとり、条件付けを行うための特徴量を出力するネットワークを適用
         speaker_fmap = self.condition_layer(speaker_id_embedded)
 
-        #n_layers個のResidualBlockに通す
-        for i in range(self.n_layers):
-            x_in = self.in_layers[i](x)
+        #n_resblocks個のResidualBlockに通す
+        for i in range(self.n_resblocks):
+            x_in = self.in_resblocks[i](x)
             #speaker_fmapから特徴量を選択
             cond_offset = i * 2 * self.hidden_channels
             speaker_fmap_selected = speaker_fmap[:,cond_offset:cond_offset+2*self.hidden_channels,:]
@@ -75,7 +75,7 @@ class WN(nn.Module):
             acts = gated_activation_unit(x_in, speaker_fmap_selected, n_channels_tensor)
             #convに通す
             res_skip_acts = self.res_skip_layers[i](acts)
-            if i < self.n_layers - 1:
+            if i < self.n_resblocks - 1:
                 #特徴量の前半はxと加算
                 res_acts = res_skip_acts[:,:self.hidden_channels,:]
                 x = (x + res_acts) * x_mask

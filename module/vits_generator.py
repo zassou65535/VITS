@@ -102,16 +102,13 @@ class VitsGenerator(nn.Module):
                       in_z_channel=self.z_channels#入力するzのchannel数
                     )
     
-    #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力するネットワーク
+    #Flowとは入出力が可逆なネットワーク
+    #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力するネットワーク　逆も可能
     #音声変換時は、話者間の変換を実行する役割を果たす
     self.flow = Flow(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
                       in_z_channels=self.z_channels,#入力するzのchannel数
                       phoneme_embedding_dim=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
-                      kernel_size=5,
-                      dilation_rate=1,
-                      n_layers=4,
-                      n_flows=4
                     )
 
     self.stochastic_duration_predictor = StochasticDurationPredictor(

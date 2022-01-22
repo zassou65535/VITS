@@ -23,7 +23,7 @@ class PosteriorEncoder(nn.Module):
         phoneme_embedding_dim = 192,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
         kernel_size = 5,#WN内のconv1dのカーネルサイズ
         dilation_rate = 1,#WN内のconv1dのdilationを決めるための数値
-        n_layers = 16,#WN内で、ResidualBlockをいくつ重ねるか
+        n_resblocks = 16,#WN内で、ResidualBlockをいくつ重ねるか
         ):
         super(PosteriorEncoder, self).__init__()
 
@@ -33,12 +33,12 @@ class PosteriorEncoder(nn.Module):
         self.phoneme_embedding_dim = phoneme_embedding_dim#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
         self.kernel_size = kernel_size#WN内のconv1dのカーネルサイズ
         self.dilation_rate = dilation_rate#WN内のconv1dのdilationを決めるための数値
-        self.n_layers = n_layers#WN内で、ResidualBlockをいくつ重ねるか
+        self.n_resblocks = n_resblocks#WN内で、ResidualBlockをいくつ重ねるか
 
         #入力スペクトログラムに対し前処理を行うネットワーク
         self.preprocess = nn.Conv1d(self.in_spec_channels, self.phoneme_embedding_dim, 1)
         #WNを用いて特徴量の抽出を行う　WNの詳細はwn.py参照
-        self.wn = WN(self.phoneme_embedding_dim, self.kernel_size, self.dilation_rate, self.n_layers, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
+        self.wn = WN(self.phoneme_embedding_dim, self.kernel_size, self.dilation_rate, self.n_resblocks, speaker_id_embedding_dim=self.speaker_id_embedding_dim)
         #ガウス分布の平均と分散を生成するネットワーク
         self.projection = nn.Conv1d(self.phoneme_embedding_dim, self.out_z_channels * 2, 1)
 
