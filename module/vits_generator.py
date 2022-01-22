@@ -119,18 +119,19 @@ class VitsGenerator(nn.Module):
                       p_dropout=0.5,
                       n_flows=4
                     )
-
+                    
   def forward(self, text_padded, text_lengths, spec_padded, spec_lengths, speaker_id):
     #text(音素)の内容をTextEncoderに通す
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)
 
-    #話者id埋め込み用ネットワーク
+    #話者idを埋め込み
     speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1)
     #linear spectrogramと埋め込み済み話者idを入力にとりEncodeを実行、zを出力する
     z, m_q, logs_q, spec_mask = self.posterior_encoder(spec_padded, spec_lengths, speaker_id_embedded)
     #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力する
     z_p = self.flow(z, spec_mask, speaker_id_embedded=speaker_id_embedded)
 
+    #Monotonic Alignment Searchを実行　音素の情報と音声の情報を関連付ける
     with torch.no_grad():
         s_p_sq_r = torch.exp(-2 * logs_p)
         neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
