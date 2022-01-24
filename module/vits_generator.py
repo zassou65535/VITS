@@ -68,9 +68,7 @@ class VitsGenerator(nn.Module):
     self.spec_channels = 513#入力する線形スペクトログラムの縦軸(周波数)の次元
     self.z_channels = 192#PosteriorEncoderから出力されるzのchannel数
     self.text_encoders_dropout_during_train = 0.1#学習時のtext_encoderのdropoutの割合
-    self.resblock_kernel_sizes = [3,7,11]
-    self.resblock_dilation_sizes = [[1,3,5], [1,3,5], [1,3,5]]
-    self.segment_size = 32
+    self.segment_size = 32#decoderによる音声の生成時、潜在変数zから何要素切り出してdecodeするか
     self.n_speakers = n_speakers#話者の種類数
     self.speaker_id_embedding_dim = 256#話者idの埋め込み先のベクトルの大きさ
 
@@ -147,9 +145,10 @@ class VitsGenerator(nn.Module):
         MAS_node_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
         MAS_path = monotonic_align.maximum_path(neg_cent, MAS_node_mask.squeeze(1)).unsqueeze(1).detach()
 
-    w = MAS_path.sum(2)
-
-    wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, w, speaker_id_embedded=speaker_id_embedded)
+    #text(音素)の各要素ごとに、音素長を計算(各音素長は整数)
+    duration_of_each_phoneme = MAS_path.sum(2)
+    #StochasticDurationPredictorを、音素列の情報から音素継続長を予測できるよう学習させる
+    wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, duration_of_each_phoneme, speaker_id_embedded=speaker_id_embedded)
     wav_fake_predicted_length = wav_fake_predicted_length / torch.sum(text_mask)
 
     m_p = torch.matmul(MAS_path.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
