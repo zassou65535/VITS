@@ -11,7 +11,7 @@ cdef void maximum_path_each(int[:,::1] path, float[:,::1] value, int t_y, int t_
   cdef float v_cur
   cdef float tmp
   cdef int index = t_x - 1
-
+  #DPを実行　KL Divergence の累積和の最小値を求める
   for y in range(t_y):
     for x in range(max(0, t_x + y - t_y), min(t_x, y + 1)):
       if x == y:
@@ -26,7 +26,7 @@ cdef void maximum_path_each(int[:,::1] path, float[:,::1] value, int t_y, int t_
       else:
         v_prev = value[y-1, x-1]
       value[y, x] += max(v_prev, v_cur)
-
+  #KL Divergenceが最も小さくなるpathを逆向きに辿って求める
   for y in range(t_y - 1, -1, -1):
     path[y, index] = 1
     if index != 0 and (index == y or value[y-1, index] < value[y-1, index-1]):
@@ -36,7 +36,7 @@ cdef void maximum_path_each(int[:,::1] path, float[:,::1] value, int t_y, int t_
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cpdef void maximum_path_c(int[:,:,::1] paths, float[:,:,::1] values, int[::1] t_ys, int[::1] t_xs) nogil:
-  cdef int b = paths.shape[0]
+  cdef int batch_size = paths.shape[0]
   cdef int i
-  for i in prange(b, nogil=True):
+  for i in prange(batch_size, nogil=True):
     maximum_path_each(paths[i], values[i], t_ys[i], t_xs[i])

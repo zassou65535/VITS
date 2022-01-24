@@ -111,9 +111,11 @@ class VitsGenerator(nn.Module):
                       phoneme_embedding_dim=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                     )
 
+    #Text-to-Speechの推論時にはAlignmentを自前で作る必要があるため、StochasticDurationPredictorを用いて音素列の情報から音素継続長を予測する必要がある。
+    #音声変換の推論時には用いない
     self.stochastic_duration_predictor = StochasticDurationPredictor(
                       speaker_id_embedding_dim=self.speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
-                      in_channels=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
+                      phoneme_embedding_dim=self.phoneme_embedding_dim,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
                       filter_channels=192,
                       kernel_size=3,
                       p_dropout=0.5,
@@ -131,21 +133,23 @@ class VitsGenerator(nn.Module):
     #zと埋め込み済み話者idを入力にとり、Monotonic Alignment Searchで用いる変数z_pを出力する
     z_p = self.flow(z, spec_mask, speaker_id_embedded=speaker_id_embedded)
 
-    #Monotonic Alignment Searchを実行　音素の情報と音声の情報を関連付ける
+    #Monotonic Alignment Search(MAS)の実行　音素の情報と音声の情報を関連付ける役割を果たす
+    #MASによって、KL Divergenceを最小にするようなalignmentを求める
     with torch.no_grad():
+        #DPで用いる、各ノードのKL Divergenceを前計算しておく
         s_p_sq_r = torch.exp(-2 * logs_p)
         neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
         neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
         neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
         neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
         neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
-
+        #マスクをかけた上でDPを実行
         attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
         attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
 
     w = attn.sum(2)
 
-    wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, w, g=speaker_id_embedded)
+    wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, w, speaker_id_embedded=speaker_id_embedded)
     wav_fake_predicted_length = wav_fake_predicted_length / torch.sum(text_mask)
 
     m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
@@ -166,7 +170,7 @@ class VitsGenerator(nn.Module):
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)
     speaker_id_embedded = self.speaker_embedding(speaker_id).unsqueeze(-1) #話者埋め込み用ネットワーク
 
-    logw = self.stochastic_duration_predictor(text_encoded, text_mask, g=speaker_id_embedded, reverse=True, noise_scale=noise_scale_w)
+    logw = self.stochastic_duration_predictor(text_encoded, text_mask, speaker_id_embedded=speaker_id_embedded, reverse=True, noise_scale=noise_scale_w)
 
     w = torch.exp(logw) * text_mask * length_scale
     w_ceil = torch.ceil(w)

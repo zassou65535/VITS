@@ -323,11 +323,17 @@ class DDSConv(nn.Module):
         return x * x_mask
 
 class StochasticDurationPredictor(nn.Module):
-    def __init__(self, speaker_id_embedding_dim, in_channels, filter_channels, kernel_size, p_dropout, n_flows=4):
+    def __init__(self,
+        speaker_id_embedding_dim,#話者idの埋め込み先のベクトルの大きさ
+        phoneme_embedding_dim=192,#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
+        filter_channels=192, 
+        kernel_size=3, 
+        p_dropout=0.5, 
+        n_flows=4):
         super().__init__()
-        filter_channels = in_channels
-        self.speaker_id_embedding_dim = speaker_id_embedding_dim
-        self.in_channels = in_channels
+        filter_channels = phoneme_embedding_dim
+        self.speaker_id_embedding_dim = speaker_id_embedding_dim#話者idの埋め込み先のベクトルの大きさ
+        self.phoneme_embedding_dim = phoneme_embedding_dim#TextEncoderで作成した、埋め込み済み音素のベクトルの大きさ
         self.filter_channels = filter_channels
         self.kernel_size = kernel_size
         self.p_dropout = p_dropout
@@ -349,54 +355,56 @@ class StochasticDurationPredictor(nn.Module):
             self.post_flows.append(ConvFlow(2, filter_channels, kernel_size, n_layers=3))
             self.post_flows.append(Flip())
 
-        self.pre = nn.Conv1d(in_channels, filter_channels, 1)
+        self.pre = nn.Conv1d(phoneme_embedding_dim, filter_channels, 1)
         self.proj = nn.Conv1d(filter_channels, filter_channels, 1)
         self.convs = DDSConv(filter_channels, kernel_size, n_layers=3, p_dropout=p_dropout)
         self.cond = nn.Conv1d(speaker_id_embedding_dim, filter_channels, 1)
 
-    def forward(self, x, x_mask, w=None, g=None, reverse=False, noise_scale=1.0):
-        x = torch.detach(x)
+    def forward(self, text_encoded, text_mask, w=None, speaker_id_embedded=None, reverse=False, noise_scale=1.0):
+        x = torch.detach(text_encoded)
         x = self.pre(x)
-        if g is not None:
-            g = torch.detach(g)
-            x = x + self.cond(g)
-        x = self.convs(x, x_mask)
-        x = self.proj(x) * x_mask
+        if speaker_id_embedded is not None:
+            speaker_id_embedded = torch.detach(speaker_id_embedded)
+            x = x + self.cond(speaker_id_embedded)
+        x = self.convs(x, text_mask)
+        x = self.proj(x) * text_mask
 
+        #順伝搬時
         if not reverse:
             flows = self.flows
             assert w is not None
 
             logdet_tot_q = 0 
             h_w = self.post_pre(w)
-            h_w = self.post_convs(h_w, x_mask)
-            h_w = self.post_proj(h_w) * x_mask
-            e_q = torch.randn(w.size(0), 2, w.size(2)).to(device=x.device, dtype=x.dtype) * x_mask
+            h_w = self.post_convs(h_w, text_mask)
+            h_w = self.post_proj(h_w) * text_mask
+            e_q = torch.randn(w.size(0), 2, w.size(2)).to(device=x.device, dtype=x.dtype) * text_mask
             z_q = e_q
             for flow in self.post_flows:
-                z_q, logdet_q = flow(z_q, x_mask, g=(x + h_w))
+                z_q, logdet_q = flow(z_q, text_mask, g=(x + h_w))
                 logdet_tot_q += logdet_q
             z_u, z1 = torch.split(z_q, [1, 1], 1) 
-            u = torch.sigmoid(z_u) * x_mask
-            z0 = (w - u) * x_mask
-            logdet_tot_q += torch.sum((F.logsigmoid(z_u) + F.logsigmoid(-z_u)) * x_mask, [1,2])
-            logq = torch.sum(-0.5 * (math.log(2*math.pi) + (e_q**2)) * x_mask, [1,2]) - logdet_tot_q
+            u = torch.sigmoid(z_u) * text_mask
+            z0 = (w - u) * text_mask
+            logdet_tot_q += torch.sum((F.logsigmoid(z_u) + F.logsigmoid(-z_u)) * text_mask, [1,2])
+            logq = torch.sum(-0.5 * (math.log(2*math.pi) + (e_q**2)) * text_mask, [1,2]) - logdet_tot_q
 
             logdet_tot = 0
-            z0, logdet = self.log_flow(z0, x_mask)
+            z0, logdet = self.log_flow(z0, text_mask)
             logdet_tot += logdet
             z = torch.cat([z0, z1], 1)
             for flow in flows:
-                z, logdet = flow(z, x_mask, g=x, reverse=reverse)
+                z, logdet = flow(z, text_mask, g=x, reverse=reverse)
                 logdet_tot = logdet_tot + logdet
-            nll = torch.sum(0.5 * (math.log(2*math.pi) + (z**2)) * x_mask, [1,2]) - logdet_tot
+            nll = torch.sum(0.5 * (math.log(2*math.pi) + (z**2)) * text_mask, [1,2]) - logdet_tot
             return nll + logq # [b]
+        #逆伝搬時
         else:
             flows = list(reversed(self.flows))
             flows = flows[:-2] + [flows[-1]] # remove a useless vflow
             z = torch.randn(x.size(0), 2, x.size(2)).to(device=x.device, dtype=x.dtype) * noise_scale
             for flow in flows:
-                z = flow(z, x_mask, g=x, reverse=reverse)
+                z = flow(z, text_mask, g=x, reverse=reverse)
             z0, z1 = torch.split(z, [1, 1], 1)
             logw = z0
             return logw
