@@ -143,17 +143,17 @@ class VitsGenerator(nn.Module):
         neg_cent3 = torch.matmul(z_p.transpose(1, 2), (m_p * s_p_sq_r))
         neg_cent4 = torch.sum(-0.5 * (m_p ** 2) * s_p_sq_r, [1], keepdim=True)
         neg_cent = neg_cent1 + neg_cent2 + neg_cent3 + neg_cent4
-        #マスクをかけた上でDPを実行
-        attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
-        attn = monotonic_align.maximum_path(neg_cent, attn_mask.squeeze(1)).unsqueeze(1).detach()
+        #不要なノードにマスクをかけた上でDPを実行
+        MAS_node_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
+        MAS_path = monotonic_align.maximum_path(neg_cent, MAS_node_mask.squeeze(1)).unsqueeze(1).detach()
 
-    w = attn.sum(2)
+    w = MAS_path.sum(2)
 
     wav_fake_predicted_length = self.stochastic_duration_predictor(text_encoded, text_mask, w, speaker_id_embedded=speaker_id_embedded)
     wav_fake_predicted_length = wav_fake_predicted_length / torch.sum(text_mask)
 
-    m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
-    logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
+    m_p = torch.matmul(MAS_path.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
+    logs_p = torch.matmul(MAS_path.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
     #z.size() : torch.Size([64, 192, 400])
     #spec_lengths.size() : torch.Size([64])
@@ -164,7 +164,7 @@ class VitsGenerator(nn.Module):
     wav_fake = self.decoder(z_slice, speaker_id_embedded=speaker_id_embedded)
     #wav_fake.size() : torch.Size([64, 1, 8192])
 
-    return wav_fake, wav_fake_predicted_length, attn, ids_slice, text_mask, spec_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
+    return wav_fake, wav_fake_predicted_length, MAS_path, ids_slice, text_mask, spec_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
   def text_to_speech(self, text_padded, text_lengths, speaker_id, noise_scale=.667, length_scale=1, noise_scale_w=0.8, max_len=None):
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)
@@ -176,11 +176,11 @@ class VitsGenerator(nn.Module):
     w_ceil = torch.ceil(w)
     y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
     spec_mask = torch.unsqueeze(sequence_mask(y_lengths, None), 1).to(text_mask.dtype)
-    attn_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
-    attn = generate_path(w_ceil, attn_mask)
+    MAS_node_mask = torch.unsqueeze(text_mask, 2) * torch.unsqueeze(spec_mask, -1)
+    MAS_path = generate_path(w_ceil, MAS_node_mask)
 
-    m_p = torch.matmul(attn.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
-    logs_p = torch.matmul(attn.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
+    m_p = torch.matmul(MAS_path.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
+    logs_p = torch.matmul(MAS_path.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
     z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
     z = self.flow(z_p, spec_mask, speaker_id_embedded=speaker_id_embedded, reverse=True)
