@@ -114,7 +114,7 @@ validation_loader = torch.utils.data.DataLoader(
 print("validation dataset size: {}".format(len(validation_dataset)))
 
 #Generatorのインスタンスを生成
-netG = VitsGenerator(n_phoneme=n_phoneme, n_speakers=100)
+netG = VitsGenerator(n_phoneme=n_phoneme, n_speakers=n_speakers)
 #ネットワークをデバイスに移動
 netG = netG.to(device)
 
