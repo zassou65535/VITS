@@ -45,6 +45,8 @@ target_speaker_id = 9
 output_dir = "./output/vits/inference/text_to_speech/"
 #使用するデバイス
 device = "cuda:0"
+#扱う音声のサンプリングレート
+sampling_rate = 22050
 
 #学習に使用した音素を列挙
 phoneme_list = [' ', 'I', 'N', 'U', 'a', 'b', 'by', 'ch', 'cl', 'd', 'dy', 'e', 'f', 'g', 'gy', 'h', 'hy', 'i', 'j', 'k', 'ky', 'm', 'my', 'n', 'ny', 'o', 'p', 'py', 'r', 'ry', 's', 'sh', 't', 'ts', 'ty', 'u', 'v', 'w', 'y', 'z']
@@ -54,16 +56,6 @@ phoneme2index = {p : i for i, p in enumerate(phoneme_list, 0)}
 n_phoneme = len(phoneme_list)
 #学習に使用した話者の数
 n_speakers = 100
-
-###以下は音声処理に必要なパラメーター###
-#扱う音声のサンプリングレート
-sampling_rate = 22050
-#スペクトログラムの計算時に何サンプル単位でSTFTを行うか
-filter_length = 1024
-#スペクトログラムの計算時に適用する窓の大きさ
-win_length = 1024
-#ホップ数　何サンプルずらしながらSTFTを行うか
-hop_length = 256
 
 #出力用ディレクトリがなければ作る
 os.makedirs(output_dir, exist_ok=True)
