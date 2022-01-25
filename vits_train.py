@@ -35,7 +35,6 @@ torch.manual_seed(manualSeed)
 ###以下は学習に必要なパラメーター###
 #前処理用スクリプトによって出力された、データセットに関するtxtファイルへのパス
 train_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_train.txt"#学習用
-validation_dataset_txtfile_path = "./dataset/jvs_preprocessed/jvs_preprocessed_for_validation.txt"#推論用
 #結果を出力するためのディレクトリ
 output_dir = "./output/vits/train/"
 #使用するデバイス
@@ -96,22 +95,6 @@ train_loader = torch.utils.data.DataLoader(
     							worker_init_fn=lambda worker_id: torch.manual_seed(manualSeed + worker_id)
 							)
 print("train dataset size: {}".format(len(train_dataset)))
-#推論用
-validation_dataset = AudioSpeakerTextLoader(
-								dataset_txtfile_path=validation_dataset_txtfile_path,
-								phoneme_list = phoneme_list
-							)
-validation_loader = torch.utils.data.DataLoader(
-								validation_dataset, 
-								batch_size=1,
-								collate_fn=collate_fn, 
-								num_workers=0,
-								shuffle=False, 
-								pin_memory=True,
-								#num_workerごとにシードを設定　これがないと各num_workerにおいて乱数が似たような値を返してしまう
-    							worker_init_fn=lambda worker_id: torch.manual_seed(manualSeed + worker_id)
-							)
-print("validation dataset size: {}".format(len(validation_dataset)))
 
 #Generatorのインスタンスを生成
 netG = VitsGenerator(n_phoneme=n_phoneme, n_speakers=n_speakers)
