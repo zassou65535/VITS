@@ -55,7 +55,11 @@ def generate_path(duration, mask):
     cum_duration_flat = cum_duration.view(b * t_x)
     path = sequence_mask(cum_duration_flat, t_y).to(mask.dtype)
     path = path.view(b, t_x, t_y)
-    path = path - F.pad(path, convert_pad_shape([[0, 0], [1, 0], [0, 0]]))[:, :-1]
+
+    padding_shape = [[0, 0], [1, 0], [0, 0]]
+    padding = [item for sublist in padding_shape[::-1] for item in sublist]
+
+    path = path - F.pad(path, padding)[:, :-1]
     path = path.unsqueeze(1).transpose(2,3) * mask
     return path
 
@@ -183,8 +187,8 @@ class VitsGenerator(nn.Module):
 
     z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
     z = self.flow(z_p, spec_mask, speaker_id_embedded=speaker_id_embedded, reverse=True)
-    o = self.decoder((z * spec_mask)[:,:,:max_len], speaker_id_embedded=speaker_id_embedded)
-    return o
+    wav_fake = self.decoder((z * spec_mask)[:,:,:max_len], speaker_id_embedded=speaker_id_embedded)
+    return wav_fake
 
   def voice_conversion(self, spec_padded, spec_lengths, source_speaker_id, target_speaker_id):
     assert self.n_speakers > 0

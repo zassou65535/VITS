@@ -47,11 +47,8 @@ output_dir = "./output/vits/inference/voice_conversion/"
 device = "cuda:0"
 #学習に使用した音素の種類数
 n_phoneme = 40
-#話者の数
+#学習に使用した話者の数
 n_speakers = 100
-
-#生成するor切り出す音声波形の大きさ
-segment_size = 8192
 
 ###以下は音声処理に必要なパラメーター###
 #扱う音声のサンプリングレート
