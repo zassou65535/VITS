@@ -158,14 +158,10 @@ class VitsGenerator(nn.Module):
     m_p = torch.matmul(MAS_path.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
     logs_p = torch.matmul(MAS_path.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
 
-    #z.size() : torch.Size([64, 192, 400])
-    #spec_lengths.size() : torch.Size([64])
-    #self.segment_size = 32
+    #zの要素からランダムにself.segment_size個取り出しz_sliceとする
     z_slice, ids_slice = rand_slice_segments(z, spec_lengths, self.segment_size)
-
-    #z_slice.size() : torch.Size([64, 192, 32])
+    #z_sliceから音声波形を生成
     wav_fake = self.decoder(z_slice, speaker_id_embedded=speaker_id_embedded)
-    #wav_fake.size() : torch.Size([64, 1, 8192])
 
     return wav_fake, predicted_duration_of_each_phoneme, MAS_path, ids_slice, text_mask, spec_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 

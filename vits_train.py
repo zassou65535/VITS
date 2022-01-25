@@ -146,26 +146,9 @@ for epoch in itertools.count():
 		spec_real, spec_real_length = data[2].to(device), data[3].to(device)
 		speaker_id = data[4].to(device)
 		text, text_length = data[5].to(device), data[6].to(device)
-		#wav_real.size(), wav_real_length.size() : torch.Size([batch_size, 音声のサンプル数]) torch.Size([batch_size])
-		#spec_real.size(), spec_real_length.size() : torch.Size([batch_size, 513(周波数領域), STFT後のサンプル数]) torch.Size([batch_size])
-		#speaker_id.size() : torch.Size([batch_size])
-		#text.size(), text_length.size() : torch.Size([batch_size, 音素列の長さ]) torch.Size([batch_size])
 
 		###Generatorによる生成###
 		wav_fake, wav_fake_predicted_length, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text, text_length, spec_real, spec_real_length, speaker_id)
-		#wav_fake : torch.Size([64, 1, 8192])　生成された波形
-		#wav_fake_predicted_length : torch.Size([64])
-		#attn : torch.Size([64, 1, 400, 181])
-		#ids_slice : torch.Size([64])
-		#x_mask : torch.Size([64, 1, 181])
-		#z_mask : torch.Size([64, 1, 400])
-
-		#z : torch.Size([64, 192, 400])
-		#z_p : torch.Size([64, 192, 400])
-		#m_p : torch.Size([64, 192, 400])
-		#logs_p : torch.Size([64, 192, 400])
-		#m_q : torch.Size([64, 192, 400])
-		#logs_q : torch.Size([64, 192, 400])
 
 		#データセット中のスペクトログラムからメルスペクトログラムを計算
 		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=filter_length//2 + 1, f_min=0, f_max=sampling_rate//2, n_mels=melspec_freq_dim, sample_rate=sampling_rate).to(device)
@@ -193,8 +176,8 @@ for epoch in itertools.count():
 		wav_real = slice_segments(input_tensor=wav_real, start_indices=id_slice*hop_length, segment_size=segment_size)
 
 		#####Discriminatorの学習#####
-		# wav_real.size() : torch.Size([64, 1, 8192])　本物波形
-		# wav_fake.size() : torch.Size([64, 1, 8192])　生成された波形
+		# wav_real : 本物波形
+		# wav_fake : 生成された波形
 		authenticity_real, _ = netD(wav_real)
 		authenticity_fake, _ = netD(wav_fake.detach())
 
