@@ -205,10 +205,6 @@ class FeedForwardNetwork(nn.Module):
         padding = [[0, 0], [0, 0], [pad_l, pad_r]]
         #特徴量の左右を1ずつpadding
         x = F.pad(x, convert_pad_shape(padding))
-        #torch.Size([64, 768, 153]) -> torch.Size([64, 768, 155])
-        #torch.Size([64, 192, 145]) -> torch.Size([64, 192, 147])
-        #torch.Size([64, 192, 181]) -> torch.Size([64, 192, 183])
-        #torch.Size([64, 768, 181]) -> torch.Size([64, 768, 183])
         return x
 
 #Transformerに似た、AttentionとFeedForwardNetworkからなるEncoder
@@ -229,20 +225,13 @@ class Encoder(nn.Module):
         self.ffn_layers = nn.ModuleList()
         self.norm_layers_2 = nn.ModuleList()
         for i in range(self.n_layers):
-            #print(phoneme_embedding_dim, phoneme_embedding_dim, n_heads, p_dropout, window_size) : 
-            #192 192 2 0.1 4
             self.attention_layers.append(MultiHeadAttention(phoneme_embedding_dim, phoneme_embedding_dim, n_heads, p_dropout=p_dropout, window_size=window_size))
             self.norm_layers_1.append(torch.nn.LayerNorm(phoneme_embedding_dim))
-            #print(phoneme_embedding_dim, phoneme_embedding_dim, filter_channels, kernel_size, p_dropout) :
-            #192 192 768 3 0.1
             self.ffn_layers.append(FeedForwardNetwork(phoneme_embedding_dim, phoneme_embedding_dim, filter_channels, kernel_size, p_dropout=p_dropout))
             self.norm_layers_2.append(torch.nn.LayerNorm(phoneme_embedding_dim))
 
     def forward(self, x, x_mask):
-        #x.size() : torch.Size([16, 192, 213])
-        #x_mask.size() : torch.Size([64, 1, 145(example)])
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
-        #attn_mask.size() : torch.Size([64, 1, 145, 145])
         x = x * x_mask
         for i in range(self.n_layers):
             y = self.attention_layers[i](x, x, attn_mask)
