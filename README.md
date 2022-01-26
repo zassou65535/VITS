@@ -1,6 +1,6 @@
 # VITS
 ## 概要
-PytorchによるVITSの実装です。  
+Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装です。  
 日本語音声のデータセット"<a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>"で学習し、音声間の変換とText-to-Speechを行うことができます。  
 
 ## 想定環境
