@@ -42,11 +42,11 @@ device = "cuda:0"
 #バッチサイズ
 batch_size = 16
 #イテレーション数
-total_iterations = 800000
+total_iterations = 1200000
 #学習率
 lr = 0.0002
 #学習率の減衰率　各epoch終了時に減衰する処理を入れる
-lr_decay = 0.999875
+lr_decay = 0.99999
 #何イテレーションごとに学習結果を出力するか
 output_iter = 5000
 #学習に使用する音素を列挙
