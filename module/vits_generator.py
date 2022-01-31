@@ -136,9 +136,9 @@ class VitsGenerator(nn.Module):
     z_p = self.flow(z, spec_mask, speaker_id_embedded=speaker_id_embedded)
 
     #Monotonic Alignment Search(MAS)の実行　音素の情報と音声の情報を関連付ける役割を果たす
-    #MASによって、KL Divergenceを最小にするようなalignmentを求める
+    #MASによって、尤度を最大にするようなpathを求める
     with torch.no_grad():
-        #DPで用いる、各ノードのKL Divergenceを前計算しておく
+        #DPで用いる、各ノードの尤度を前計算しておく
         s_p_sq_r = torch.exp(-2 * logs_p)
         neg_cent1 = torch.sum(-0.5 * math.log(2 * math.pi) - logs_p, [1], keepdim=True)
         neg_cent2 = torch.matmul(-0.5 * (z_p ** 2).transpose(1, 2), s_p_sq_r)
