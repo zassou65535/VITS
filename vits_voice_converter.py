@@ -34,7 +34,7 @@ torch.manual_seed(manualSeed)
 
 ###以下は推論に必要なパラメーター###
 #学習済みパラメーターへのパス
-trained_weight_path = "./output/vits/train/iteration140000/netG_cpu.pth"
+trained_weight_path = "./output/vits/train/iteration1199999/netG_cpu.pth"
 #変換対象としたいwavファイルへのパス
 source_wav_path = "./dataset/jvs_preprocessed/jvs_wav_preprocessed/jvs099/VOICEACTRESS100_011.wav"
 #変換元の話者id
