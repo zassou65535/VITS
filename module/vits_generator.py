@@ -152,8 +152,8 @@ class VitsGenerator(nn.Module):
     #text(音素)の各要素ごとに、音素長を計算(各音素長は整数)
     duration_of_each_phoneme = MAS_path.sum(2)
     #StochasticDurationPredictorを、音素列の情報から音素継続長を予測できるよう学習させる
-    predicted_duration_of_each_phoneme = self.stochastic_duration_predictor(text_encoded, text_mask, duration_of_each_phoneme, speaker_id_embedded=speaker_id_embedded)
-    predicted_duration_of_each_phoneme = predicted_duration_of_each_phoneme / torch.sum(text_mask)
+    stochastic_duration_predictor_loss = self.stochastic_duration_predictor(text_encoded, text_mask, duration_of_each_phoneme, speaker_id_embedded=speaker_id_embedded)
+    stochastic_duration_predictor_loss = stochastic_duration_predictor_loss / torch.sum(text_mask)
 
     m_p = torch.matmul(MAS_path.squeeze(1), m_p.transpose(1, 2)).transpose(1, 2)
     logs_p = torch.matmul(MAS_path.squeeze(1), logs_p.transpose(1, 2)).transpose(1, 2)
@@ -163,7 +163,7 @@ class VitsGenerator(nn.Module):
     #z_sliceから音声波形を生成
     wav_fake = self.decoder(z_slice, speaker_id_embedded=speaker_id_embedded)
 
-    return wav_fake, predicted_duration_of_each_phoneme, MAS_path, ids_slice, text_mask, spec_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
+    return wav_fake, stochastic_duration_predictor_loss, MAS_path, ids_slice, text_mask, spec_mask, (z, z_p, m_p, logs_p, m_q, logs_q)
 
   def text_to_speech(self, text_padded, text_lengths, speaker_id, noise_scale=.667, length_scale=1, noise_scale_w=0.8, max_len=None):
     text_encoded, m_p, logs_p, text_mask = self.text_encoder(text_padded, text_lengths)

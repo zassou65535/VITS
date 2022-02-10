@@ -148,7 +148,7 @@ for epoch in itertools.count():
 		text, text_length = data[5].to(device), data[6].to(device)
 
 		###Generatorによる生成###
-		wav_fake, wav_fake_predicted_length, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text, text_length, spec_real, spec_real_length, speaker_id)
+		wav_fake, stochastic_duration_predictor_loss, attn, id_slice, x_mask, z_mask, (z, z_p, m_p, logs_p, m_q, logs_q) = netG(text, text_length, spec_real, spec_real_length, speaker_id)
 
 		#データセット中のスペクトログラムからメルスペクトログラムを計算
 		fbanks = torchaudio.functional.melscale_fbanks(n_freqs=filter_length//2 + 1, f_min=0, f_max=sampling_rate//2, n_mels=melspec_freq_dim, sample_rate=sampling_rate).to(device)
@@ -201,7 +201,7 @@ for epoch in itertools.count():
 		authenticity_fake, d_feature_map_fake = netD(wav_fake)
 
 		#lossを計算
-		duration_loss = torch.sum(wav_fake_predicted_length.float())#duration loss
+		duration_loss = torch.sum(stochastic_duration_predictor_loss.float())#duration loss
 		mel_reconstruction_loss = F.l1_loss(mel_spec_real, mel_spec_fake)*45#reconstruction loss
 		kl_loss = kl_divergence_loss(z_p, logs_q, m_p, logs_p, z_mask)#KL divergence
 		feature_matching_loss = feature_loss(d_feature_map_real, d_feature_map_fake)#feature matching loss(Discriminatorの中間層の出力分布の統計量を, realとfakeの場合それぞれにおいて互いの分布間で近づける)
