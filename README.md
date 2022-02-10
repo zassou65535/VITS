@@ -1,7 +1,7 @@
 # VITS
 ## 概要
 Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装です。  
-日本語音声のデータセット"<a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>"で学習し、音声間の変換とText-to-Speechを行うことができます。  
+日本語音声のデータセット"<a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>"で学習し、音声間の変換とテキストの読み上げを行うことができます。  
 
 ## 想定環境
 Ubuntu20.04  
@@ -43,11 +43,11 @@ Cython==0.29.26
 5. `python vits_voice_converter.py`を実行し推論(音声変換)を行います。  
     * 変換結果が`./output/vits/inference/voice_conversion/output.wav`として出力されます。  
 
-### 推論(Text-to-Speech)
+### 推論(テキスト読み上げ)
 1. `vits_text_to_speech.py`の39行目付近の変数`trained_weight_path`に`vits_train.py`で出力した学習済みパラメーターへのパスを指定します。  
 2. `vits_text_to_speech.py`の41行目付近の変数`source_text`に発話させたい文章を指定します。  
 4. `vits_text_to_speech.py`の43行目付近の変数`target_speaker_id`に発話の対象とする話者idを指定します。  
-5. `python vits_text_to_speech.py`を実行しText-to-Speechを行います。  
+5. `python vits_text_to_speech.py`を実行しテキストの読み上げを行います。  
     * 生成結果が`./output/vits/inference/text_to_speech/output.wav`として出力されます。  
 
 ## 参考
