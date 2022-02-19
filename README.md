@@ -1,7 +1,12 @@
 # VITS
 ## 概要
 Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装です。  
-日本語音声のデータセット"<a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>"で学習し、音声間の変換とテキストの読み上げを行うことができます。  
+日本語音声のデータセット"<a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>"で学習し
+
+- テキストの読み上げ  
+- 音声間の変換  
+
+を行うことができます。  
 
 ## 想定環境
 Ubuntu20.04  
@@ -34,21 +39,21 @@ Cython==0.29.26
     * 学習過程が`./output/vits/train/`以下に出力されます。  
     * 学習済みパラメーターが`./output/vits/train/iteration295000/netG_cpu.pth`などという形で5000イテレーション毎に出力されます。  
 
-### 推論(音声変換)
-1. `vits_voice_converter.py`の37行目付近の変数`trained_weight_path`に`vits_train.py`で出力した学習済みパラメーターへのパスを指定します。  
-2. `vits_voice_converter.py`の39行目付近の変数`source_wav_path`に変換元としたいwavファイルへのパスを指定します。  
-3. `vits_voice_converter.py`の41行目付近の変数`source_speaker_id`に変換元の話者idを指定します。  
-    * 話者idは(JVS corpusで指定されている話者の番号-1)となります。例えば"jvs010"の話者を指定したい場合は、話者idは9となります。  
-4. `vits_voice_converter.py`の43行目付近の変数`target_speaker_id`に変換先の話者idを指定します。  
-5. `python vits_voice_converter.py`を実行し推論(音声変換)を行います。  
-    * 変換結果が`./output/vits/inference/voice_conversion/output.wav`として出力されます。  
-
 ### 推論(テキスト読み上げ)
 1. `vits_text_to_speech.py`の39行目付近の変数`trained_weight_path`に`vits_train.py`で出力した学習済みパラメーターへのパスを指定します。  
 2. `vits_text_to_speech.py`の41行目付近の変数`source_text`に発話させたい文章を指定します。  
 4. `vits_text_to_speech.py`の43行目付近の変数`target_speaker_id`に発話の対象とする話者idを指定します。  
+    * 話者idは(JVS corpusで決められている話者の番号-1)となります。例えば"jvs010"の話者を指定したい場合は、話者idは9となります。  
 5. `python vits_text_to_speech.py`を実行しテキストの読み上げを行います。  
     * 生成結果が`./output/vits/inference/text_to_speech/output.wav`として出力されます。  
+
+### 推論(音声変換)
+1. `vits_voice_converter.py`の37行目付近の変数`trained_weight_path`に`vits_train.py`で出力した学習済みパラメーターへのパスを指定します。  
+2. `vits_voice_converter.py`の39行目付近の変数`source_wav_path`に変換元としたいwavファイルへのパスを指定します。  
+3. `vits_voice_converter.py`の41行目付近の変数`source_speaker_id`に変換元の話者idを指定します。  
+4. `vits_voice_converter.py`の43行目付近の変数`target_speaker_id`に変換先の話者idを指定します。  
+5. `python vits_voice_converter.py`を実行し推論(音声変換)を行います。  
+    * 変換結果が`./output/vits/inference/voice_conversion/output.wav`として出力されます。  
 
 ## 参考
 <a href="https://arxiv.org/abs/2106.06103">https://arxiv.org/abs/2106.06103</a>  
