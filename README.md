@@ -7,6 +7,7 @@ Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装で�
 - 音声間の変換  
 
 を行うことができます。  
+詳しい解説は<a href="https://qiita.com/zassou65535/items/00d7d5562711b89689a8">こちら</a>   
 
 ## 想定環境
 Ubuntu20.04  
