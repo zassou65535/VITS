@@ -27,7 +27,7 @@ Cython==0.29.26
 1. <a href="https://sites.google.com/site/shinnosuketakamichi/research-topics/jvs_corpus">JVS corpus</a>をダウンロード、解凍します。  
 2. `jvs_preprocessor.py`の16行目付近の変数`jvs_dataset_path`で、解凍したJVS corpusへのパスを指定します。  
 3. `python jvs_preprocessor.py`を実行し前処理を実行します。  
-    * データセット中の各`.wav`ファイルがサンプリングレート16000[Hz]へと変換され、`./dataset/jvs_preprocessed/jvs_wav_preprocessed/`以下に出力されます。  
+    * データセット中の各`.wav`ファイルがサンプリングレート22050[Hz]へと変換され、`./dataset/jvs_preprocessed/jvs_wav_preprocessed/`以下に出力されます。  
     * 前処理済み各`.wav`ファイルへのパスと、それに対応するラベルが列挙されたファイルが`./dataset/jvs_preprocessed/jvs_preprocessed_for_train.txt`として出力されます。 
 
 ### Cythonのモジュールのコンパイル
