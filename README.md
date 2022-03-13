@@ -10,10 +10,14 @@ Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装で�
 モデルの詳しい解説と音声生成例については<a href="https://qiita.com/zassou65535/items/00d7d5562711b89689a8">こちら</a>を参照。   
 
 ## 想定環境
-Ubuntu20.04  
-Python 3.8.5, torch==1.10.1+cu113, torchaudio==0.10.1+cu113  
-Cython==0.29.26  
-ライブラリの詳細は`requirements.txt`を参照。
+* Ubuntu20.04  
+* Python 3.8.5
+* torch==1.10.1+cu113
+* torchaudio==0.10.1+cu113  
+* Cython==0.29.26  
+
+ライブラリの詳細は`requirements.txt`を参照。  
+ライブラリはpipによるインストールを推奨します。
 
 ## プログラム
 - `jvs_preprocessor.py`はJVS corpusに対し前処理を行うプログラムです。  
