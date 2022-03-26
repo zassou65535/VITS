@@ -42,7 +42,7 @@ device = "cuda:0"
 #バッチサイズ
 batch_size = 16
 #イテレーション数
-total_iterations = 1200000
+total_iterations = 2000000
 #学習率
 lr = 0.0002
 #学習率の減衰率　各epoch終了時に減衰する処理を入れる

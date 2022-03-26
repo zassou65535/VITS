@@ -36,7 +36,7 @@ torch.manual_seed(manualSeed)
 
 ###以下は推論に必要なパラメーター###
 #学習済みパラメーターへのパス
-trained_weight_path = "./output/vits/train/iteration1199999/netG_cpu.pth"
+trained_weight_path = "./output/vits/train/iteration1999999/netG_cpu.pth"
 #音声合成の対象とするテキスト
 source_text = "これはテスト音声です"
 #対象とする話者id
