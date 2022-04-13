@@ -139,9 +139,9 @@ netD.train()
 
 #エポックごとのループ　itertools.count()でカウンターを伴う無限ループを実装可能
 for epoch in itertools.count():
-	#データセットA, Bからbatch_size枚ずつ取り出し学習
+	#データセットからbatch_size個ずつ取り出し学習
 	for data in train_loader:
-		#deviceに転送
+		#各データをdeviceに転送
 		wav_real, wav_real_length = data[0].to(device), data[1].to(device)
 		spec_real, spec_real_length = data[2].to(device), data[3].to(device)
 		speaker_id = data[4].to(device)
