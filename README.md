@@ -11,10 +11,9 @@ Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装で�
 
 ## 想定環境
 * Ubuntu20.04  
-* Python 3.8.5
-* torch==1.10.1+cu113
-* torchaudio==0.10.1+cu113  
-* Cython==0.29.26  
+* Python 3.10.0
+* torch==1.13.1+cu117
+* torchaudio==0.13.1+cu117  
 
 ライブラリの詳細は`requirements.txt`を参照。  
 ライブラリはpipによるインストールを推奨します。
@@ -37,7 +36,8 @@ Pytorchによる<a href="https://arxiv.org/abs/2106.06103">VITS</a>の実装で�
 ### Cythonのモジュールのコンパイル
 モジュール`monotonic_align`は高速化のためCythonで実装されています。これをコンパイルします。  
 1. `cd ./module/model_component/monotonic_align/`を実行します。  
-2. `python setup.py build_ext --inplace`でCythonで書かれたモジュールのコンパイルを行います。  
+2. `mkdir monotonic_align`を実行します。  
+3. `python setup.py build_ext --inplace`でCythonで書かれたモジュールのコンパイルを行います。  
 
 ### 学習
 1. `python vits_train.py`を実行しVITSの学習を行います。 
